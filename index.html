@@ -1500,7 +1500,40 @@ function renderPlayers() {
 
             </button>
 
-        `;
+                `;
+
+
+        const squadButton =
+            card.querySelector("button");
+
+
+        if (squadButton) {
+
+            squadButton.addEventListener(
+                "click",
+                (event) => {
+
+                    event.stopPropagation();
+
+
+                    if (selected) {
+
+                        removePlayerFromSquad(
+                            player.id
+                        );
+
+                    } else {
+
+                        addPlayerToSquad(
+                            player.id
+                        );
+
+                    }
+
+                }
+            );
+
+        }
 
 
         container.appendChild(card);
@@ -2261,6 +2294,165 @@ function updateSquadSummary() {
             avg.toFixed(1);
 
     }
+
+}
+
+// =========================================================
+// ADD PLAYER TO SQUAD
+// =========================================================
+
+function addPlayerToSquad(playerId) {
+
+    const player =
+        players.find(
+            p => Number(p.id) === Number(playerId)
+        );
+
+    if (!player) {
+        return;
+    }
+
+
+    // Already selected
+    if (
+        squad.some(
+            p => Number(p.id) === Number(playerId)
+        )
+    ) {
+        return;
+    }
+
+
+    // Maximum 15 players
+    if (squad.length >= 15) {
+
+        alert(
+            "Your squad already has 15 players."
+        );
+
+        return;
+    }
+
+
+    // Position limits
+    const positionCount =
+        squad.filter(
+            p =>
+                Number(p.element_type) ===
+                Number(player.element_type)
+        ).length;
+
+
+    const positionLimit =
+        Number(player.element_type) === 1 ? 2 :
+        Number(player.element_type) === 2 ? 5 :
+        Number(player.element_type) === 3 ? 5 :
+        3;
+
+
+    if (positionCount >= positionLimit) {
+
+        alert(
+            "You already have the maximum number of " +
+            positionName(player.element_type) +
+            " players."
+        );
+
+        return;
+    }
+
+
+    // Maximum 3 players from one club
+    const clubCount =
+        squad.filter(
+            p =>
+                Number(p.team) ===
+                Number(player.team)
+        ).length;
+
+
+    if (clubCount >= 3) {
+
+        alert(
+            "You can only have 3 players from the same club."
+        );
+
+        return;
+    }
+
+
+    // Budget check
+    const currentCost =
+        squad.reduce(
+            (total, p) =>
+                total +
+                Number(p.now_cost),
+            0
+        );
+
+
+    const newCost =
+        currentCost +
+        Number(player.now_cost);
+
+
+    if (newCost > 1000) {
+
+        alert(
+            "That player would put your squad over the £100m budget."
+        );
+
+        return;
+    }
+
+
+    // Add player
+    squad.push(player);
+
+
+    renderSquad();
+
+    renderPlayers();
+
+}
+
+
+// =========================================================
+// POSITION NAME
+// =========================================================
+
+function positionName(type) {
+
+    if (Number(type) === 1) return "goalkeepers";
+    if (Number(type) === 2) return "defenders";
+    if (Number(type) === 3) return "midfielders";
+    if (Number(type) === 4) return "forwards";
+
+    return "players";
+}
+// =========================================================
+// REMOVE PLAYER FROM SQUAD
+// =========================================================
+
+function removePlayerFromSquad(playerId) {
+
+    const index =
+        squad.findIndex(
+            p => Number(p.id) === Number(playerId)
+        );
+
+
+    if (index === -1) {
+        return;
+    }
+
+
+    squad.splice(index, 1);
+
+
+    renderSquad();
+
+    renderPlayers();
 
 }
 </script>
