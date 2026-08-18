@@ -2344,11 +2344,45 @@ function renderPitchRow(
     position
 ) {
 
-    const required =
-        position === "GK" ? 1 :
-        position === "DEF" ? 4 :
-        position === "MID" ? 3 :
-        3;
+const formationSelect =
+    document.getElementById(
+        "formation-select"
+    );
+
+const formation =
+    formationSelect
+        ? formationSelect.value
+        : "AUTO";
+
+const activeFormation =
+    formation === "AUTO"
+        ? "4-3-3"
+        : formation;
+
+const parts =
+    activeFormation
+        .split("-")
+        .map(Number);
+
+let required = 0;
+
+if (position === "GK") {
+
+    required = 1;
+
+} else if (position === "DEF") {
+
+    required = parts[0];
+
+} else if (position === "MID") {
+
+    required = parts[1];
+
+} else if (position === "FWD") {
+
+    required = parts[2];
+
+}
 
 
     for (
