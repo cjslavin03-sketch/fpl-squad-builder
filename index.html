@@ -3143,33 +3143,29 @@ function buildOptimizedSquad(strategy) {
     );
 
 
-    // -----------------------------------------------------
-    // Preserve currently selected players
-    // -----------------------------------------------------
+// -----------------------------------------------------
+// Preserve ONLY specifically locked players
+// -----------------------------------------------------
 
-    const lockedPlayers =
-        [...squad];
-
-
-    const lockedIds =
-        new Set(
-            lockedPlayers.map(
-                p => Number(p.id)
+const lockedPlayers =
+    squad.filter(
+        player =>
+            lockedPlayerIds.has(
+                Number(player.id)
             )
-        );
+    );
 
 
-    const newSquad =
-        [...lockedPlayers];
+const lockedIds =
+    new Set(
+        lockedPlayers.map(
+            p => Number(p.id)
+        )
+    );
 
 
-    let totalCost =
-        newSquad.reduce(
-            (total, player) =>
-                total +
-                Number(player.now_cost),
-            0
-        );
+const newSquad =
+    [...lockedPlayers];
 
 
     // -----------------------------------------------------
