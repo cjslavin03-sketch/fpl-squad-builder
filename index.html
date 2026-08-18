@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FPL Squad Builder</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f5f7;
+    color: #222;
+}
+
+header {
+    background: #37003c;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+header p {
+    margin: 6px 0 0;
+    opacity: 0.85;
+}
+
+.container {
+    max-width: 1100px;
+    margin: auto;
+    padding: 20px;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.stat {
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+.stat-title {
+    font-size: 12px;
+    color: #777;
+    text-transform: uppercase;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+input, select {
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 15px;
+}
+
+input {
+    flex: 1;
+    min-width: 200px;
+}
+
+.players {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.player {
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+.player h3 {
+    margin: 0 0 5px;
+}
+
+.position {
+    font-size: 12px;
+    font-weight: bold;
+    color: #37003c;
+}
+
+.price {
+    font-weight: bold;
+    margin-top: 8px;
+}
+
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #37003c;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    opacity: .9;
+}
+
+button:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+
+.squad {
+    margin-top: 30px;
+}
+
+.squad-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+}
+
+.slot {
+    background: white;
+    border-radius: 10px;
+    min-height: 90px;
+    padding: 10px;
+    text-align: center;
+    border: 2px dashed #ccc;
+}
+
+.slot strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.remove {
+    background: #d32f2f;
+    font-size: 11px;
+    padding: 5px 8px;
+    margin-top: 5px;
+}
+
+@media(max-width:700px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .squad-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>⚽ FPL Squad Builder</h1>
+    <p>Build your Fantasy Premier League squad</p>
+</header>
+
+<div class="container">
+
+    <div class="dashboard">
+
+        <div class="stat">
+            <div class="stat-title">Budget</div>
+            <div class="stat-value">£100.0m</div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-title">Spent</div>
+            <div class="stat-value" id="spent">£0.0m</div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-title">Remaining</div>
+            <div class="stat-value" id="remaining">£100.0m</div>
+        </div>
+
+    </div>
+
+    <div class="controls">
+
+        <input
+            type="text"
+            id="search"
+            placeholder="Search players..."
+            oninput="renderPlayers()"
+        >
+
+        <select id="positionFilter" onchange="renderPlayers()">
+            <option value="ALL">All Positions</option>
+            <option value="GK">Goalkeepers</option>
+            <option value="DEF">Defenders</option>
+            <option value="MID">Midfielders</option>
+            <option value="FWD">Forwards</option>
+        </select>
+
+    </div>
+
+    <h2>Players</h2>
+
+    <div class="players" id="players"></div>
+
+    <div class="squad">
+
+        <h2>Your Squad</h2>
+
+        <p id="squadStatus">
+            0 / 15 players selected
+        </p>
+
+        <div class="squad-grid" id="squad"></div>
+
+    </div>
+
+</div>
+
+<script>
+
+const players = [
+
+    {name:"Erling Haaland", position:"FWD", price:14.5},
+    {name:"Mohamed Salah", position:"MID", price:14.0},
+    {name:"Bukayo Saka", position:"MID", price:10.0},
+    {name:"Cole Palmer", position:"MID", price:10.5},
+    {name:"Alexander Isak", position:"FWD", price:9.5},
+    {name:"Ollie Watkins", position:"FWD", price:8.5},
+    {name:"Son Heung-min", position:"MID", price:9.0},
+    {name:"Phil Foden", position:"MID", price:9.0},
+    {name:"Martin Ødegaard", position:"MID", price:8.5},
+    {name:"Bruno Fernandes", position:"MID", price:9.0},
+
+    {name:"William Saliba", position:"DEF", price:6.0},
+    {name:"Gabriel", position:"DEF", price:6.0},
+    {name:"Trent Alexander-Arnold", position:"DEF", price:6.5},
+    {name:"Andrew Robertson", position:"DEF", price:5.5},
+    {name:"Ben White", position:"DEF", price:5.5},
+
+    {name:"Alisson", position:"GK", price:5.5},
+    {name:"David Raya", position:"GK", price:5.5},
+    {name:"Jordan Pickford", position:"GK", price:5.0},
+
+    {name:"Anthony Gordon", position:"MID", price:7.0},
+    {name:"Eberechi Eze", position:"MID", price:7.0},
+    {name:"Jarrod Bowen", position:"MID", price:7.5},
+    {name:"James Maddison", position:"MID", price:7.5},
+
+    {name:"Dominic Solanke", position:"FWD", price:7.5},
+    {name:"Darwin Núñez", position:"FWD", price:8.0},
+    {name:"Jean-Philippe Mateta", position:"FWD", price:7.0}
+
+];
+
+let squad = [];
+
+function renderPlayers() {
+
+    const container = document.getElementById("players");
+
+    const search =
+        document.getElementById("search").value.toLowerCase();
+
+    const filter =
+        document.getElementById("positionFilter").value;
+
+    container.innerHTML = "";
+
+    players
+        .filter(player =>
+            player.name.toLowerCase().includes(search)
+        )
+        .filter(player =>
+            filter === "ALL" || player.position === filter
+        )
+        .forEach(player => {
+
+            const card = document.createElement("div");
+
+            card.className = "player";
+
+            const alreadySelected =
+                squad.some(p => p.name === player.name);
+
+            card.innerHTML = `
+
+                <h3>${player.name}</h3>
+
+                <div class="position">
+                    ${player.position}
+                </div>
+
+                <div class="price">
+                    £${player.price.toFixed(1)}m
+                </div>
+
+                <br>
+
+                <button
+                    onclick="addPlayer('${player.name}')"
+                    ${alreadySelected ? "disabled" : ""}
+                >
+                    ${alreadySelected ? "Selected" : "Add Player"}
+                </button>
+
+            `;
+
+            container.appendChild(card);
+
+        });
+
+}
+
+function addPlayer(name) {
+
+    if (squad.length >= 15) {
+        alert("Your squad already has 15 players.");
+        return;
+    }
+
+    const player =
+        players.find(p => p.name === name);
+
+    const spent =
+        squad.reduce((sum,p) => sum + p.price, 0);
+
+    if (spent + player.price > 100) {
+        alert("You don't have enough budget.");
+        return;
+    }
+
+    squad.push(player);
+
+    updateSquad();
+
+    renderPlayers();
+
+}
+
+function removePlayer(index) {
+
+    squad.splice(index,1);
+
+    updateSquad();
+
+    renderPlayers();
+
+}
+
+function updateSquad() {
+
+    const squadContainer =
+        document.getElementById("squad");
+
+    squadContainer.innerHTML = "";
+
+    squad.forEach((player,index) => {
+
+        const slot =
+            document.createElement("div");
+
+        slot.className = "slot";
+
+        slot.innerHTML = `
+
+            <strong>${player.name}</strong>
+
+            <small>
+                ${player.position}
+            </small>
+
+            <br>
+
+            £${player.price.toFixed(1)}m
+
+            <br>
+
+            <button
+                class="remove"
+                onclick="removePlayer(${index})"
+            >
+                Remove
+            </button>
+
+        `;
+
+        squadContainer.appendChild(slot);
+
+    });
+
+    const spent =
+        squad.reduce((sum,p) => sum + p.price, 0);
+
+    document.getElementById("spent").innerText =
+        "£" + spent.toFixed(1) + "m";
+
+    document.getElementById("remaining").innerText =
+        "£" + (100 - spent).toFixed(1) + "m";
+
+    document.getElementById("squadStatus").innerText =
+        squad.length + " / 15 players selected";
+
+}
+
+renderPlayers();
+
+</script>
+
+</body>
+</html>
