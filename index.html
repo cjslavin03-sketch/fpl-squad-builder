@@ -601,7 +601,116 @@ button {
     ========================================== -->
 
 <div class="selection-panel">
+<div class="build-squad-panel">
 
+    <button
+        id="build-squad-btn"
+        class="build-squad-button"
+        type="button"
+    >
+        🧠 Build My Squad
+    </button>
+
+    <div
+        id="build-options"
+        class="build-options"
+        style="display:none;"
+    >
+
+        <h3>Choose Your Strategy</h3>
+
+        <div class="strategy-grid">
+
+            <button
+                class="strategy-option selected"
+                data-strategy="overall"
+                type="button"
+            >
+                ⭐
+                <strong>Best Overall</strong>
+                <span>Best projected team</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="safe"
+                type="button"
+            >
+                🛡️
+                <strong>Safe & Reliable</strong>
+                <span>Minutes + consistency</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="moneyball"
+                type="button"
+            >
+                💰
+                <strong>Moneyball</strong>
+                <span>Maximum value</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="attack"
+                type="button"
+            >
+                ⚔️
+                <strong>Attack Heavy</strong>
+                <span>Goals + assists + upside</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="balanced"
+                type="button"
+            >
+                ⚖️
+                <strong>Balanced</strong>
+                <span>Production + value + safety</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="differential"
+                type="button"
+            >
+                🎯
+                <strong>Differential</strong>
+                <span>Low ownership + upside</span>
+            </button>
+
+
+            <button
+                class="strategy-option"
+                data-strategy="upside"
+                type="button"
+            >
+                🚀
+                <strong>High Upside</strong>
+                <span>Maximum ceiling</span>
+            </button>
+
+        </div>
+
+
+        <button
+            id="generate-squad-btn"
+            class="generate-squad-button"
+            type="button"
+        >
+            BUILD SQUAD
+        </button>
+
+    </div>
+
+</div>
     <h2>Select Players</h2>
 
     <input
@@ -2525,6 +2634,483 @@ function loadSavedSquad() {
             "Could not load saved squad:",
             error
         );
+
+    }
+
+}
+// =========================================================
+// BUILD MY SQUAD — UI
+// =========================================================
+
+let selectedBuildStrategy = "overall";
+
+
+const buildSquadButton =
+    document.getElementById(
+        "build-squad-btn"
+    );
+
+
+const buildOptions =
+    document.getElementById(
+        "build-options"
+    );
+
+
+const generateSquadButton =
+    document.getElementById(
+        "generate-squad-btn"
+    );
+
+
+// Open / close strategy menu
+
+if (buildSquadButton) {
+
+    buildSquadButton.addEventListener(
+        "click",
+        () => {
+
+            const isHidden =
+                buildOptions.style.display ===
+                "none";
+
+            buildOptions.style.display =
+                isHidden
+                    ? "block"
+                    : "none";
+
+        }
+    );
+
+}
+
+
+// Strategy buttons
+
+document
+    .querySelectorAll(
+        ".strategy-option"
+    )
+    .forEach(button => {
+
+        button.addEventListener(
+            "click",
+            () => {
+
+                document
+                    .querySelectorAll(
+                        ".strategy-option"
+                    )
+                    .forEach(
+                        other =>
+                            other.classList.remove(
+                                "selected"
+                            )
+                    );
+
+
+                button.classList.add(
+                    "selected"
+                );
+
+
+                selectedBuildStrategy =
+                    button.dataset.strategy;
+
+            }
+        );
+
+    });
+
+
+// Build button
+
+if (generateSquadButton) {
+
+    generateSquadButton.addEventListener(
+        "click",
+        () => {
+
+            buildOptimizedSquad(
+                selectedBuildStrategy
+            );
+
+        }
+    );
+
+}
+// =========================================================
+// FPL SQUAD OPTIMIZER
+// =========================================================
+
+function buildOptimizedSquad(strategy) {
+
+    if (!players || !players.length) {
+
+        alert(
+            "FPL player data has not loaded yet."
+        );
+
+        return;
+    }
+
+
+    // -----------------------------------------------------
+    // Strategy weights
+    // -----------------------------------------------------
+
+    const weights = {
+
+        overall: {
+            projected: 0.35,
+            value: 0.20,
+            minutes: 0.20,
+            upside: 0.15,
+            confidence: 0.10
+        },
+
+        safe: {
+            projected: 0.25,
+            value: 0.10,
+            minutes: 0.40,
+            upside: 0.05,
+            confidence: 0.20
+        },
+
+        moneyball: {
+            projected: 0.25,
+            value: 0.45,
+            minutes: 0.15,
+            upside: 0.10,
+            confidence: 0.05
+        },
+
+        attack: {
+            projected: 0.30,
+            value: 0.10,
+            minutes: 0.15,
+            upside: 0.35,
+            confidence: 0.10
+        },
+
+        balanced: {
+            projected: 0.25,
+            value: 0.25,
+            minutes: 0.25,
+            upside: 0.15,
+            confidence: 0.10
+        },
+
+        differential: {
+            projected: 0.25,
+            value: 0.20,
+            minutes: 0.15,
+            upside: 0.30,
+            confidence: 0.10
+        },
+
+        upside: {
+            projected: 0.25,
+            value: 0.10,
+            minutes: 0.10,
+            upside: 0.45,
+            confidence: 0.10
+        }
+
+    };
+
+
+    const selectedWeights =
+        weights[strategy] ||
+        weights.overall;
+
+
+    // -----------------------------------------------------
+    // Score players
+    // -----------------------------------------------------
+
+    const candidates =
+        players.map(player => {
+
+            const a =
+                player.analytics || {};
+
+
+            const projected =
+                Number(
+                    a.projectedPoints ||
+                    a.projected ||
+                    player.total_points ||
+                    0
+                );
+
+
+            const value =
+                Number(
+                    a.value ||
+                    0
+                );
+
+
+            const minutes =
+                Number(
+                    a.minutesSecurity ||
+                    a.minutes ||
+                    50
+                );
+
+
+            const upside =
+                Number(
+                    a.upside ||
+                    50
+                );
+
+
+            const confidence =
+                Number(
+                    a.confidence ||
+                    50
+                );
+
+
+            const score =
+
+                projected *
+                    selectedWeights.projected +
+
+                value *
+                    selectedWeights.value +
+
+                minutes *
+                    selectedWeights.minutes +
+
+                upside *
+                    selectedWeights.upside +
+
+                confidence *
+                    selectedWeights.confidence;
+
+
+            return {
+                player,
+                score
+            };
+
+        });
+
+
+    // -----------------------------------------------------
+    // Sort by strategy score
+    // -----------------------------------------------------
+
+    candidates.sort(
+        (a, b) =>
+            b.score -
+            a.score
+    );
+
+
+    // -----------------------------------------------------
+    // Preserve currently selected players
+    // -----------------------------------------------------
+
+    const lockedPlayers =
+        [...squad];
+
+
+    const lockedIds =
+        new Set(
+            lockedPlayers.map(
+                p => Number(p.id)
+            )
+        );
+
+
+    const newSquad =
+        [...lockedPlayers];
+
+
+    let totalCost =
+        newSquad.reduce(
+            (total, player) =>
+                total +
+                Number(player.now_cost),
+            0
+        );
+
+
+    // -----------------------------------------------------
+    // Position requirements
+    // -----------------------------------------------------
+
+    const requirements = {
+
+        1: 2,  // GK
+        2: 5,  // DEF
+        3: 5,  // MID
+        4: 3   // FWD
+
+    };
+
+
+    // -----------------------------------------------------
+    // Current position counts
+    // -----------------------------------------------------
+
+    const counts = {
+
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0
+
+    };
+
+
+    newSquad.forEach(
+        player => {
+
+            counts[
+                player.element_type
+            ]++;
+
+        }
+    );
+
+
+    // -----------------------------------------------------
+    // Add players
+    // -----------------------------------------------------
+
+    for (
+        const candidate of candidates
+    ) {
+
+        const player =
+            candidate.player;
+
+
+        const id =
+            Number(player.id);
+
+
+        const position =
+            Number(player.element_type);
+
+
+        const price =
+            Number(player.now_cost);
+
+
+        // Already selected
+        if (
+            lockedIds.has(id)
+        ) {
+            continue;
+        }
+
+
+        // Position full
+        if (
+            counts[position] >=
+            requirements[position]
+        ) {
+            continue;
+        }
+
+
+        // Club limit
+        const clubCount =
+            newSquad.filter(
+                p =>
+                    Number(p.team) ===
+                    Number(player.team)
+            ).length;
+
+
+        if (clubCount >= 3) {
+            continue;
+        }
+
+
+        // Budget
+        if (
+            totalCost +
+            price >
+            1000
+        ) {
+            continue;
+        }
+
+
+        // Add player
+        newSquad.push(player);
+
+        totalCost += price;
+
+        counts[position]++;
+
+
+        if (
+            newSquad.length >= 15
+        ) {
+            break;
+        }
+
+    }
+
+
+    // -----------------------------------------------------
+    // Check whether a full squad was built
+    // -----------------------------------------------------
+
+    if (
+        newSquad.length < 15
+    ) {
+
+        alert(
+            "I couldn't build a complete legal squad with the current locked players and budget. Try unlocking a player or using a different strategy."
+        );
+
+        return;
+    }
+
+
+    // -----------------------------------------------------
+    // Apply squad
+    // -----------------------------------------------------
+
+    squad.length = 0;
+
+    newSquad.forEach(
+        player =>
+            squad.push(player)
+    );
+
+
+    renderSquad();
+
+    renderPlayers();
+
+
+    // -----------------------------------------------------
+    // Scroll back to squad
+    // -----------------------------------------------------
+
+    const squadElement =
+        document.querySelector(
+            ".squad"
+        );
+
+
+    if (squadElement) {
+
+        squadElement.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
 
     }
 
