@@ -3219,6 +3219,22 @@ const lockedIds =
 const newSquad =
     [...lockedPlayers];
 
+const newSquad =
+    [...lockedPlayers];
+
+
+// -----------------------------------------------------
+// Current squad cost
+// -----------------------------------------------------
+
+let totalCost =
+    newSquad.reduce(
+        (total, player) =>
+            total +
+            Number(player.now_cost),
+        0
+    );
+
 
     // -----------------------------------------------------
     // Position requirements
