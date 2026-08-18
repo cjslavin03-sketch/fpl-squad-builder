@@ -600,42 +600,59 @@ button {
          POSITION SELECTOR
     ========================================== -->
 
-    <div class="selection-panel">
+<div class="selection-panel">
 
-        <h2>Select Players</h2>
+    <h2>Select Players</h2>
 
-        <div class="filter-buttons">
+    <input
+        id="search"
+        type="text"
+        placeholder="Search players..."
+        autocomplete="off"
+    >
 
-            <button
-                class="active"
-                data-position="ALL"
-            >
-                Recommended
-            </button>
+    <select id="sort">
 
-            <button data-position="GK">
-                GK
-            </button>
+        <option value="overall">Overall</option>
 
-            <button data-position="DEF">
-                DEF
-            </button>
+        <option value="price">Price</option>
 
-            <button data-position="MID">
-                MID
-            </button>
+        <option value="points">Points</option>
 
-            <button data-position="FWD">
-                FWD
-            </button>
+        <option value="form">Form</option>
 
-        </div>
+        <option value="value">Value</option>
 
-    </div>
+    </select>
+
+    <div class="filter-buttons">
+
+        <button
+            class="active"
+            data-position="ALL">
+            Recommended
+        </button>
+
+        <button data-position="GK">
+            GK
+        </button>
+
+        <button data-position="DEF">
+            DEF
+        </button>
+
+        <button data-position="MID">
+            MID
+        </button>
+
+        <button data-position="FWD">
+            FWD
+        </button>
 
 </div>
-    <div id="players" class="players"></div>
 
+<div id="players" class="players"></div>
+    
 </div>
 
 <script>
