@@ -256,6 +256,261 @@ button {
         grid-template-columns: repeat(3, 1fr);
     }
 }
+    /* =========================================================
+   FPL PITCH
+========================================================= */
+
+.pitch {
+    position: relative;
+    min-height: 560px;
+    padding: 30px 15px;
+    margin-top: 15px;
+    border-radius: 14px;
+    overflow: hidden;
+
+    background:
+        repeating-linear-gradient(
+            0deg,
+            #168447 0px,
+            #168447 70px,
+            #13783f 70px,
+            #13783f 140px
+        );
+
+    border: 4px solid white;
+}
+
+
+/* Pitch markings */
+
+.pitch::before {
+    content: "";
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 50%;
+    border-top: 2px solid rgba(255,255,255,.75);
+}
+
+.pitch::after {
+    content: "";
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    border: 2px solid rgba(255,255,255,.75);
+    border-radius: 50%;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+
+/* Rows */
+
+.pitch-row {
+    position: relative;
+    z-index: 2;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    gap: 12px;
+
+    min-height: 105px;
+}
+
+
+/* Player slots */
+
+.pitch-player {
+    width: 78px;
+    text-align: center;
+    color: white;
+    cursor: pointer;
+}
+
+
+.pitch-player-card {
+    width: 62px;
+    height: 62px;
+
+    margin: auto;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: white;
+    color: #37003c;
+
+    font-weight: bold;
+
+    border: 3px solid #37003c;
+}
+
+
+.pitch-player-name {
+    margin-top: 5px;
+
+    font-size: 12px;
+    font-weight: bold;
+
+    text-shadow:
+        0 1px 2px rgba(0,0,0,.6);
+}
+
+
+.pitch-player-price {
+    font-size: 11px;
+}
+
+
+/* Empty position */
+
+.empty-slot {
+    width: 78px;
+    text-align: center;
+    color: white;
+}
+
+
+.empty-slot-card {
+    width: 62px;
+    height: 62px;
+
+    margin: auto;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: rgba(255,255,255,.2);
+
+    border: 2px dashed white;
+
+    font-size: 25px;
+}
+
+
+.empty-slot-name {
+    margin-top: 5px;
+    font-size: 11px;
+}
+
+
+/* Bench */
+
+.bench {
+    margin-top: 15px;
+
+    background: white;
+
+    border-radius: 12px;
+
+    padding: 15px;
+}
+
+
+.bench h3 {
+    margin-top: 0;
+}
+
+
+.bench-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 10px;
+}
+
+
+.bench-player {
+    text-align: center;
+
+    padding: 10px;
+
+    background: #f4f1f5;
+
+    border-radius: 9px;
+}
+
+
+.bench-player strong {
+    display: block;
+}
+
+
+.bench-empty {
+    padding: 15px;
+
+    text-align: center;
+
+    background: #f4f1f5;
+
+    border-radius: 9px;
+
+    color: #777;
+}
+
+
+/* Selection panel */
+
+.selection-panel {
+    background: white;
+
+    margin-top: 15px;
+
+    padding: 15px;
+
+    border-radius: 12px;
+}
+
+
+.selection-panel h2 {
+    margin-top: 0;
+}
+
+
+/* Mobile pitch */
+
+@media (max-width: 600px) {
+
+    .pitch {
+        min-height: 500px;
+
+        padding:
+            20px 5px;
+    }
+
+    .pitch-row {
+        gap: 4px;
+        min-height: 95px;
+    }
+
+    .pitch-player,
+    .empty-slot {
+        width: 68px;
+    }
+
+    .pitch-player-card,
+    .empty-slot-card {
+        width: 52px;
+        height: 52px;
+    }
+
+    .pitch-player-name,
+    .empty-slot-name {
+        font-size: 10px;
+    }
+
+}
 </style>
 </head>
 
@@ -281,60 +536,81 @@ button {
 
     <div class="squad">
 
-        <h2>My Squad</h2>
+    <h2>⚽ My FPL Squad</h2>
 
-        <div class="summary">
+    <div class="summary">
 
-            <div class="summary-card">
-                Budget
-                <strong id="budget">£100.0m</strong>
-            </div>
-
-            <div class="summary-card">
-                Players
-                <strong id="player-count">0 / 15</strong>
-            </div>
-
-            <div class="summary-card">
-                Projected
-                <strong id="projected">0.0</strong>
-            </div>
-
-            <div class="summary-card">
-                Avg Rating
-                <strong id="avg-rating">0</strong>
-            </div>
-
+        <div class="summary-card">
+            Budget
+            <strong id="budget">£100.0m</strong>
         </div>
 
-        <div id="squad" class="squad-grid"></div>
+        <div class="summary-card">
+            Players
+            <strong id="player-count">0 / 15</strong>
+        </div>
+
+        <div class="summary-card">
+            Projected
+            <strong id="projected">0.0</strong>
+        </div>
+
+        <div class="summary-card">
+            Avg Rating
+            <strong id="avg-rating">0</strong>
+        </div>
 
     </div>
 
-    <div class="controls">
 
-        <input
-            id="search"
-            type="text"
-            placeholder="Search players..."
-        >
+    <!-- =========================================
+         PITCH
+    ========================================== -->
 
-        <select id="sort">
-            <option value="overall">Best Overall</option>
-            <option value="projection">Projected Points</option>
-            <option value="value">Best Value</option>
-            <option value="minutes">Minutes Security</option>
-            <option value="upside">Highest Upside</option>
-            <option value="confidence">Highest Confidence</option>
-            <option value="price-low">Price: Low → High</option>
-            <option value="price-high">Price: High → Low</option>
-            <option value="points">Total Points</option>
-        </select>
+    <div class="pitch">
+
+        <div class="pitch-row forwards" id="pitch-fwd"></div>
+
+        <div class="pitch-row midfielders" id="pitch-mid"></div>
+
+        <div class="pitch-row defenders" id="pitch-def"></div>
+
+        <div class="pitch-row goalkeeper" id="pitch-gk"></div>
+
+    </div>
+
+
+    <!-- =========================================
+         BENCH
+    ========================================== -->
+
+    <div class="bench">
+
+        <h3>Bench</h3>
+
+        <div
+            class="bench-grid"
+            id="bench"
+        ></div>
+
+    </div>
+
+
+    <!-- =========================================
+         POSITION SELECTOR
+    ========================================== -->
+
+    <div class="selection-panel">
+
+        <h2>Select Players</h2>
 
         <div class="filter-buttons">
 
-            <button class="active" data-position="ALL">
-                All
+            <button
+                class="active"
+                data-position="ALL"
+            >
+                Recommended
             </button>
 
             <button data-position="GK">
@@ -357,6 +633,7 @@ button {
 
     </div>
 
+</div>
     <div id="players" class="players"></div>
 
 </div>
@@ -1582,7 +1859,382 @@ document
 ========================================================= */
 
 loadFPL();
+// =========================================================
+// FPL PITCH + SQUAD DISPLAY
+// =========================================================
 
+function renderSquad() {
+
+    const pitchFwd =
+        document.getElementById("pitch-fwd");
+
+    const pitchMid =
+        document.getElementById("pitch-mid");
+
+    const pitchDef =
+        document.getElementById("pitch-def");
+
+    const pitchGK =
+        document.getElementById("pitch-gk");
+
+    const bench =
+        document.getElementById("bench");
+
+
+    if (!pitchFwd ||
+        !pitchMid ||
+        !pitchDef ||
+        !pitchGK ||
+        !bench) {
+
+        return;
+
+    }
+
+
+    pitchFwd.innerHTML = "";
+    pitchMid.innerHTML = "";
+    pitchDef.innerHTML = "";
+    pitchGK.innerHTML = "";
+    bench.innerHTML = "";
+
+
+    // -----------------------------------------------------
+    // Separate squad by position
+    // -----------------------------------------------------
+
+    const goalkeepers =
+        squad.filter(
+            p => Number(p.element_type) === 1
+        );
+
+    const defenders =
+        squad.filter(
+            p => Number(p.element_type) === 2
+        );
+
+    const midfielders =
+        squad.filter(
+            p => Number(p.element_type) === 3
+        );
+
+    const forwards =
+        squad.filter(
+            p => Number(p.element_type) === 4
+        );
+
+
+    // -----------------------------------------------------
+    // Determine starting XI
+    // -----------------------------------------------------
+
+    const starters =
+        squad.slice(0, 11);
+
+    const starterIds =
+        new Set(
+            starters.map(p => p.id)
+        );
+
+
+    const startingFwd =
+        forwards.filter(
+            p => starterIds.has(p.id)
+        );
+
+    const startingMid =
+        midfielders.filter(
+            p => starterIds.has(p.id)
+        );
+
+    const startingDef =
+        defenders.filter(
+            p => starterIds.has(p.id)
+        );
+
+    const startingGK =
+        goalkeepers.filter(
+            p => starterIds.has(p.id)
+        );
+
+
+    // -----------------------------------------------------
+    // Render rows
+    // -----------------------------------------------------
+
+    renderPitchRow(
+        pitchFwd,
+        startingFwd,
+        "FWD"
+    );
+
+    renderPitchRow(
+        pitchMid,
+        startingMid,
+        "MID"
+    );
+
+    renderPitchRow(
+        pitchDef,
+        startingDef,
+        "DEF"
+    );
+
+    renderPitchRow(
+        pitchGK,
+        startingGK,
+        "GK"
+    );
+
+
+    // -----------------------------------------------------
+    // Bench
+    // -----------------------------------------------------
+
+    const benchPlayers =
+        squad.filter(
+            p => !starterIds.has(p.id)
+        );
+
+
+    if (!benchPlayers.length) {
+
+        bench.innerHTML =
+            '<div class="bench-empty">' +
+            'Bench players will appear here' +
+            '</div>';
+
+    } else {
+
+        benchPlayers.forEach(
+            player => {
+
+                const div =
+                    document.createElement("div");
+
+                div.className =
+                    "bench-player";
+
+                div.innerHTML =
+                    "<strong>" +
+                    player.web_name +
+                    "</strong>" +
+                    "<span>£" +
+                    Number(player.now_cost / 10)
+                        .toFixed(1) +
+                    "m</span>";
+
+                bench.appendChild(div);
+
+            }
+        );
+
+    }
+
+
+    // -----------------------------------------------------
+    // Summary
+    // -----------------------------------------------------
+
+    updateSquadSummary();
+
+}
+
+
+// =========================================================
+// PITCH ROW
+// =========================================================
+
+function renderPitchRow(
+    container,
+    playersInRow,
+    position
+) {
+
+    const required =
+        position === "GK" ? 1 :
+        position === "DEF" ? 4 :
+        position === "MID" ? 3 :
+        3;
+
+
+    for (
+        let i = 0;
+        i < required;
+        i++
+    ) {
+
+        const player =
+            playersInRow[i];
+
+
+        if (player) {
+
+            const div =
+                document.createElement("div");
+
+            div.className =
+                "pitch-player";
+
+            div.innerHTML =
+
+                '<div class="pitch-player-card">' +
+                    getInitials(player.web_name) +
+                '</div>' +
+
+                '<div class="pitch-player-name">' +
+                    player.web_name +
+                '</div>' +
+
+                '<div class="pitch-player-price">' +
+                    "£" +
+                    Number(player.now_cost / 10)
+                        .toFixed(1) +
+                    "m" +
+                '</div>';
+
+            container.appendChild(div);
+
+        } else {
+
+            const div =
+                document.createElement("div");
+
+            div.className =
+                "empty-slot";
+
+            div.innerHTML =
+
+                '<div class="empty-slot-card">' +
+                    "+" +
+                '</div>' +
+
+                '<div class="empty-slot-name">' +
+                    "Add " +
+                    position +
+                '</div>';
+
+            container.appendChild(div);
+
+        }
+
+    }
+
+}
+
+
+// =========================================================
+// PLAYER INITIALS
+// =========================================================
+
+function getInitials(name) {
+
+    if (!name) {
+        return "?";
+    }
+
+    const parts =
+        name.trim().split(" ");
+
+    if (parts.length === 1) {
+
+        return parts[0]
+            .substring(0, 2)
+            .toUpperCase();
+
+    }
+
+    return (
+        parts[0][0] +
+        parts[parts.length - 1][0]
+    ).toUpperCase();
+
+}
+
+
+// =========================================================
+// SQUAD SUMMARY
+// =========================================================
+
+function updateSquadSummary() {
+
+    const budget =
+        document.getElementById("budget");
+
+    const count =
+        document.getElementById("player-count");
+
+    const projected =
+        document.getElementById("projected");
+
+    const avgRating =
+        document.getElementById("avg-rating");
+
+
+    const spent =
+        squad.reduce(
+            (total, player) =>
+                total +
+                Number(player.now_cost) / 10,
+            0
+        );
+
+
+    const remaining =
+        100 - spent;
+
+
+    if (budget) {
+
+        budget.textContent =
+            "£" +
+            remaining.toFixed(1) +
+            "m";
+
+    }
+
+
+    if (count) {
+
+        count.textContent =
+            squad.length +
+            " / 15";
+
+    }
+
+
+    const projectedTotal =
+        squad.reduce(
+            (total, player) =>
+                total +
+                Number(
+                    player.total_points || 0
+                ),
+            0
+        );
+
+
+    if (projected) {
+
+        projected.textContent =
+            projectedTotal.toFixed(1);
+
+    }
+
+
+    if (avgRating) {
+
+        const avg =
+            squad.length
+                ? projectedTotal / squad.length
+                : 0;
+
+        avgRating.textContent =
+            avg.toFixed(1);
+
+    }
+
+}
 </script>
 
 </body>
