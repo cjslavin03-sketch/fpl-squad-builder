@@ -2097,14 +2097,14 @@ function renderSquad() {
         document.getElementById("bench");
 
 
-    if (!pitchFwd ||
+    if (
+        !pitchFwd ||
         !pitchMid ||
         !pitchDef ||
         !pitchGK ||
-        !bench) {
-
+        !bench
+    ) {
         return;
-
     }
 
 
@@ -2114,174 +2114,180 @@ function renderSquad() {
     pitchGK.innerHTML = "";
     bench.innerHTML = "";
 
-// -----------------------------------------------------
-// Determine formation
-// -----------------------------------------------------
-
-let formation = selectedFormation;
-
-if (formation === "AUTO") {
-
-    formation = chooseBestFormation();
-
-}
 
     // -----------------------------------------------------
-
-// -----------------------------------------------------
-// Separate squad by position
-// -----------------------------------------------------
-
-const goalkeepers =
-    squad.filter(
-        p => Number(p.element_type) === 1
-    );
-
-const defenders =
-    squad.filter(
-        p => Number(p.element_type) === 2
-    );
-
-const midfielders =
-    squad.filter(
-        p => Number(p.element_type) === 3
-    );
-
-const forwards =
-    squad.filter(
-        p => Number(p.element_type) === 4
-    );
-
-
-// -----------------------------------------------------
-// Determine starting XI from formation
-// -----------------------------------------------------
-
-const formationParts =
-    formation.split("-").map(Number);
-
-const defenderCount =
-    formationParts[0];
-
-const midfielderCount =
-    formationParts[1];
-
-const forwardCount =
-    formationParts[2];
-
-
-// -----------------------------------------------------
-// Sort players by projected points
-// -----------------------------------------------------
-
-function sortByProjectedPoints(a, b) {
-
-    const aPoints =
-        Number(
-            a.analytics?.projectedPoints ||
-            a.total_points ||
-            0
-        );
-
-    const bPoints =
-        Number(
-            b.analytics?.projectedPoints ||
-            b.total_points ||
-            0
-        );
-
-    return bPoints - aPoints;
-
-}
-
-
-const sortedGoalkeepers =
-    [...goalkeepers]
-        .sort(sortByProjectedPoints);
-
-const sortedDefenders =
-    [...defenders]
-        .sort(sortByProjectedPoints);
-
-const sortedMidfielders =
-    [...midfielders]
-        .sort(sortByProjectedPoints);
-
-const sortedForwards =
-    [...forwards]
-        .sort(sortByProjectedPoints);
-
-
-// -----------------------------------------------------
-// Select starters based on formation
-// -----------------------------------------------------
-
-const startingGK =
-    sortedGoalkeepers.slice(0, 1);
-
-const startingDef =
-    sortedDefenders.slice(
-        0,
-        defenderCount
-    );
-
-const startingMid =
-    sortedMidfielders.slice(
-        0,
-        midfielderCount
-    );
-
-const startingFwd =
-    sortedForwards.slice(
-        0,
-        forwardCount
-    );
-
-
-// -----------------------------------------------------
-// IDs of all starting players
-// -----------------------------------------------------
-
-const starterIds =
-    new Set([
-
-        ...startingGK,
-        ...startingDef,
-        ...startingMid,
-        ...startingFwd
-
-    ].map(p => p.id));
+    // Determine formation
     // -----------------------------------------------------
-    // Render rows
+
+    let formation =
+        selectedFormation || "AUTO";
+
+
+    if (formation === "AUTO") {
+
+        formation =
+            chooseBestFormation();
+
+    }
+
+
+    const formationParts =
+        formation.split("-").map(Number);
+
+
+    const defenderCount =
+        formationParts[0];
+
+    const midfielderCount =
+        formationParts[1];
+
+    const forwardCount =
+        formationParts[2];
+
+
+    // -----------------------------------------------------
+    // Separate squad by position
+    // -----------------------------------------------------
+
+    const goalkeepers =
+        squad.filter(
+            p => Number(p.element_type) === 1
+        );
+
+    const defenders =
+        squad.filter(
+            p => Number(p.element_type) === 2
+        );
+
+    const midfielders =
+        squad.filter(
+            p => Number(p.element_type) === 3
+        );
+
+    const forwards =
+        squad.filter(
+            p => Number(p.element_type) === 4
+        );
+
+
+    // -----------------------------------------------------
+    // Sort players by projected points
+    // -----------------------------------------------------
+
+    function sortByProjectedPoints(a, b) {
+
+        const aPoints =
+            Number(
+                a.analytics?.projectedPoints ||
+                a.total_points ||
+                0
+            );
+
+        const bPoints =
+            Number(
+                b.analytics?.projectedPoints ||
+                b.total_points ||
+                0
+            );
+
+        return bPoints - aPoints;
+
+    }
+
+
+    const sortedGoalkeepers =
+        [...goalkeepers]
+            .sort(sortByProjectedPoints);
+
+    const sortedDefenders =
+        [...defenders]
+            .sort(sortByProjectedPoints);
+
+    const sortedMidfielders =
+        [...midfielders]
+            .sort(sortByProjectedPoints);
+
+    const sortedForwards =
+        [...forwards]
+            .sort(sortByProjectedPoints);
+
+
+    // -----------------------------------------------------
+    // Select starting XI
+    // -----------------------------------------------------
+
+    const startingGK =
+        sortedGoalkeepers.slice(0, 1);
+
+    const startingDef =
+        sortedDefenders.slice(
+            0,
+            defenderCount
+        );
+
+    const startingMid =
+        sortedMidfielders.slice(
+            0,
+            midfielderCount
+        );
+
+    const startingFwd =
+        sortedForwards.slice(
+            0,
+            forwardCount
+        );
+
+
+    // -----------------------------------------------------
+    // Starting player IDs
+    // -----------------------------------------------------
+
+    const starterIds =
+        new Set([
+
+            ...startingGK,
+            ...startingDef,
+            ...startingMid,
+            ...startingFwd
+
+        ].map(p => p.id));
+
+
+    // -----------------------------------------------------
+    // Render pitch
     // -----------------------------------------------------
 
     renderPitchRow(
         pitchFwd,
         startingFwd,
-        "FWD"
+        "FWD",
+        forwardCount
     );
 
     renderPitchRow(
         pitchMid,
         startingMid,
-        "MID"
+        "MID",
+        midfielderCount
     );
 
     renderPitchRow(
         pitchDef,
         startingDef,
-        "DEF"
+        "DEF",
+        defenderCount
     );
 
     renderPitchRow(
         pitchGK,
         startingGK,
-        "GK"
+        "GK",
+        1
     );
 
 
     // -----------------------------------------------------
-    // Bench
+    // Render bench
     // -----------------------------------------------------
 
     const benchPlayers =
@@ -2312,9 +2318,11 @@ const starterIds =
                     "<strong>" +
                     player.web_name +
                     "</strong>" +
+
                     "<span>£" +
-                    Number(player.now_cost / 10)
-                        .toFixed(1) +
+                    Number(
+                        player.now_cost / 10
+                    ).toFixed(1) +
                     "m</span>";
 
                 bench.appendChild(div);
@@ -2323,13 +2331,6 @@ const starterIds =
         );
 
     }
-
-
-    // -----------------------------------------------------
-    // Summary
-    // -----------------------------------------------------
-
-    updateSquadSummary();
 
 }
 
@@ -2341,49 +2342,9 @@ const starterIds =
 function renderPitchRow(
     container,
     playersInRow,
-    position
+    position,
+    required
 ) {
-
-const formationSelect =
-    document.getElementById(
-        "formation-select"
-    );
-
-const formation =
-    formationSelect
-        ? formationSelect.value
-        : "AUTO";
-
-const activeFormation =
-    formation === "AUTO"
-        ? "4-3-3"
-        : formation;
-
-const parts =
-    activeFormation
-        .split("-")
-        .map(Number);
-
-let required = 0;
-
-if (position === "GK") {
-
-    required = 1;
-
-} else if (position === "DEF") {
-
-    required = parts[0];
-
-} else if (position === "MID") {
-
-    required = parts[1];
-
-} else if (position === "FWD") {
-
-    required = parts[2];
-
-}
-
 
     for (
         let i = 0;
@@ -2415,8 +2376,9 @@ if (position === "GK") {
 
                 '<div class="pitch-player-price">' +
                     "£" +
-                    Number(player.now_cost / 10)
-                        .toFixed(1) +
+                    Number(
+                        player.now_cost / 10
+                    ).toFixed(1) +
                     "m" +
                 '</div>';
 
