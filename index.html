@@ -377,6 +377,7 @@ const WORKER_URL =
 
 let players = [];
 let teams = [];
+let fixtures = [];
 let squad = [];
 
 let currentPosition = "ALL";
@@ -405,28 +406,56 @@ async function loadFPL() {
 
     try {
 
-        const response =
-            await fetch(
-                WORKER_URL + "/api/players"
-            );
+        const [playersResponse, fixturesResponse] =
+            await Promise.all([
 
-        if (!response.ok) {
+                fetch(
+                    WORKER_URL + "/api/players"
+                ),
+
+                fetch(
+                    WORKER_URL + "/api/fixtures"
+                )
+
+            ]);
+
+
+        if (!playersResponse.ok) {
 
             throw new Error(
-                "Worker returned HTTP " +
-                response.status
+                "Player API returned HTTP " +
+                playersResponse.status
             );
 
         }
 
-        const data =
-            await response.json();
+
+        if (!fixturesResponse.ok) {
+
+            throw new Error(
+                "Fixture API returned HTTP " +
+                fixturesResponse.status
+            );
+
+        }
+
+
+        const playerData =
+            await playersResponse.json();
+
+        const fixtureData =
+            await fixturesResponse.json();
+
 
         players =
-            data.elements || [];
+            playerData.elements || [];
 
         teams =
-            data.teams || [];
+            playerData.teams || [];
+
+        fixtures =
+            fixtureData || [];
+
 
         if (!players.length) {
 
@@ -436,14 +465,19 @@ async function loadFPL() {
 
         }
 
+
         status.innerHTML =
             "✅ Loaded " +
             players.length +
-            " players from the official FPL database.";
+            " players + " +
+            fixtures.length +
+            " fixtures.";
+
 
         renderPlayers();
 
         renderSquad();
+
 
     } catch (error) {
 
@@ -451,7 +485,7 @@ async function loadFPL() {
 
         status.innerHTML =
             "⚠️ Could not load live FPL data. " +
-            "The FPL data server may be temporarily unavailable.";
+            error.message;
 
     }
 
