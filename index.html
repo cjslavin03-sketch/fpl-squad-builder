@@ -537,7 +537,53 @@ button {
     <div class="squad">
 
     <h2>⚽ My FPL Squad</h2>
+<div class="formation-control">
 
+    <label for="formation-select">
+        Formation
+    </label>
+
+    <select id="formation-select">
+
+        <option value="AUTO">
+            Auto
+        </option>
+
+        <option value="3-4-3">
+            3-4-3
+        </option>
+
+        <option value="3-5-2">
+            3-5-2
+        </option>
+
+        <option value="4-3-3">
+            4-3-3
+        </option>
+
+        <option value="4-4-2">
+            4-4-2
+        </option>
+
+        <option value="4-5-1">
+            4-5-1
+        </option>
+
+        <option value="5-2-3">
+            5-2-3
+        </option>
+
+        <option value="5-3-2">
+            5-3-2
+        </option>
+
+        <option value="5-4-1">
+            5-4-1
+        </option>
+
+    </select>
+
+</div>
     <div class="summary">
 
         <div class="summary-card">
@@ -2068,66 +2114,108 @@ function renderSquad() {
     pitchGK.innerHTML = "";
     bench.innerHTML = "";
 
+// Determine formation
+
+let formation = selectedFormation;
+
+if (formation === "AUTO") {
+
+    formation = chooseBestFormation();
+
+}
 
     // -----------------------------------------------------
-    // Separate squad by position
-    // -----------------------------------------------------
+// Determine starting XI from formation
+// -----------------------------------------------------
 
-    const goalkeepers =
-        squad.filter(
-            p => Number(p.element_type) === 1
+const formationParts =
+    formation.split("-").map(Number);
+
+const defenderCount =
+    formationParts[0];
+
+const midfielderCount =
+    formationParts[1];
+
+const forwardCount =
+    formationParts[2];
+
+
+// Sort players by projected points
+
+function sortByProjectedPoints(a, b) {
+
+    const aPoints =
+        Number(
+            a.analytics?.projectedPoints ||
+            a.total_points ||
+            0
         );
 
-    const defenders =
-        squad.filter(
-            p => Number(p.element_type) === 2
+    const bPoints =
+        Number(
+            b.analytics?.projectedPoints ||
+            b.total_points ||
+            0
         );
 
-    const midfielders =
-        squad.filter(
-            p => Number(p.element_type) === 3
-        );
+    return bPoints - aPoints;
 
-    const forwards =
-        squad.filter(
-            p => Number(p.element_type) === 4
-        );
+}
 
 
-    // -----------------------------------------------------
-    // Determine starting XI
-    // -----------------------------------------------------
+const sortedGoalkeepers =
+    [...goalkeepers]
+        .sort(sortByProjectedPoints);
 
-    const starters =
-        squad.slice(0, 11);
+const sortedDefenders =
+    [...defenders]
+        .sort(sortByProjectedPoints);
 
-    const starterIds =
-        new Set(
-            starters.map(p => p.id)
-        );
+const sortedMidfielders =
+    [...midfielders]
+        .sort(sortByProjectedPoints);
 
-
-    const startingFwd =
-        forwards.filter(
-            p => starterIds.has(p.id)
-        );
-
-    const startingMid =
-        midfielders.filter(
-            p => starterIds.has(p.id)
-        );
-
-    const startingDef =
-        defenders.filter(
-            p => starterIds.has(p.id)
-        );
-
-    const startingGK =
-        goalkeepers.filter(
-            p => starterIds.has(p.id)
-        );
+const sortedForwards =
+    [...forwards]
+        .sort(sortByProjectedPoints);
 
 
+// Select starters based on formation
+
+const startingGK =
+    sortedGoalkeepers.slice(0, 1);
+
+const startingDef =
+    sortedDefenders.slice(
+        0,
+        defenderCount
+    );
+
+const startingMid =
+    sortedMidfielders.slice(
+        0,
+        midfielderCount
+    );
+
+const startingFwd =
+    sortedForwards.slice(
+        0,
+        forwardCount
+    );
+
+
+// IDs of all starting players
+
+const starterIds =
+    new Set([
+
+        ...startingGK,
+        ...startingDef,
+        ...startingMid,
+        ...startingFwd
+
+    ].map(p => p.id));
     // -----------------------------------------------------
     // Render rows
     // -----------------------------------------------------
@@ -3161,6 +3249,156 @@ function buildOptimizedSquad(strategy) {
 
 .generate-squad-button {
     margin-top: 10px;
+}
+// =========================================================
+// FORMATION SELECTOR
+// =========================================================
+
+let selectedFormation = "AUTO";
+
+
+const formationSelect =
+    document.getElementById(
+        "formation-select"
+    );
+
+
+if (formationSelect) {
+
+    formationSelect.addEventListener(
+        "change",
+        () => {
+
+            selectedFormation =
+                formationSelect.value;
+
+            renderSquad();
+
+        }
+    );
+
+}
+// =========================================================
+// CHOOSE BEST FORMATION
+// =========================================================
+
+function chooseBestFormation() {
+
+    const formations = [
+        "3-4-3",
+        "3-5-2",
+        "4-3-3",
+        "4-4-2",
+        "4-5-1",
+        "5-2-3",
+        "5-3-2",
+        "5-4-1"
+    ];
+
+
+    if (!squad || squad.length === 0) {
+
+        return "3-4-3";
+
+    }
+
+
+    let bestFormation = "3-4-3";
+    let bestScore = -Infinity;
+
+
+    formations.forEach(
+        formation => {
+
+            const parts =
+                formation.split("-").map(Number);
+
+            const defenders = parts[0];
+            const midfielders = parts[1];
+            const forwards = parts[2];
+
+
+            const defScore =
+                getBestPositionScore(
+                    2,
+                    defenders
+                );
+
+            const midScore =
+                getBestPositionScore(
+                    3,
+                    midfielders
+                );
+
+            const fwdScore =
+                getBestPositionScore(
+                    4,
+                    forwards
+                );
+
+
+            const score =
+                defScore +
+                midScore +
+                fwdScore;
+
+
+            if (score > bestScore) {
+
+                bestScore = score;
+
+                bestFormation =
+                    formation;
+
+            }
+
+        }
+    );
+
+
+    return bestFormation;
+
+}
+
+
+// =========================================================
+// POSITION SCORE
+// =========================================================
+
+function getBestPositionScore(
+    positionType,
+    numberNeeded
+) {
+
+    const positionPlayers =
+        squad
+            .filter(
+                player =>
+                    Number(
+                        player.element_type
+                    ) === Number(positionType)
+            )
+            .map(
+                player =>
+                    Number(
+                        player.analytics?.projectedPoints ||
+                        player.total_points ||
+                        0
+                    )
+            )
+            .sort(
+                (a, b) => b - a
+            );
+
+
+    return positionPlayers
+        .slice(0, numberNeeded)
+        .reduce(
+            (total, value) =>
+                total + value,
+            0
+        );
+
 }
 </script>
 
