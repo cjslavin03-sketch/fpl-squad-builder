@@ -828,6 +828,7 @@ let players = [];
 let teams = [];
 let fixtures = [];
 let squad = [];
+let lockedPlayerIds = new Set();
 function updateSquadStats() {
 
     const budgetElement =
@@ -1587,6 +1588,10 @@ function renderPlayers() {
                 p => p.id === player.id
             );
 
+const locked =
+    lockedPlayerIds.has(
+        Number(player.id)
+    );
 
         const card =
             document.createElement("div");
@@ -1731,7 +1736,16 @@ function renderPlayers() {
                 }
 
             </button>
-
+<button
+    class="lock-player-button"
+    onclick="togglePlayerLock(${player.id})"
+>
+    ${
+        locked
+            ? "🔒 Locked"
+            : "🔓 Lock Player"
+    }
+</button>
                 `;
 
 
@@ -1919,7 +1933,28 @@ function togglePlayer(playerId) {
     renderPlayers();
 
 }
+function togglePlayerLock(playerId) {
 
+    const id =
+        Number(playerId);
+
+
+    if (
+        lockedPlayerIds.has(id)
+    ) {
+
+        lockedPlayerIds.delete(id);
+
+    } else {
+
+        lockedPlayerIds.add(id);
+
+    }
+
+
+    renderPlayers();
+
+}
 
 /* =========================================================
    POSITION COUNTS
