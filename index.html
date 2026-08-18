@@ -683,19 +683,11 @@ async function loadFPL() {
 
     try {
 
-        const [playersResponse, fixturesResponse] =
-            await Promise.all([
-
-                fetch(
-                    WORKER_URL + "/api/players"
-                ),
-
-                fetch(
-                    WORKER_URL + "/api/fixtures"
-                )
-
-            ]);
-
+        // Load player data first
+        const playersResponse =
+            await fetch(
+                WORKER_URL + "/api/players"
+            );
 
         if (!playersResponse.ok) {
 
@@ -706,23 +698,8 @@ async function loadFPL() {
 
         }
 
-
-        if (!fixturesResponse.ok) {
-
-            throw new Error(
-                "Fixture API returned HTTP " +
-                fixturesResponse.status
-            );
-
-        }
-
-
         const playerData =
             await playersResponse.json();
-
-        const fixtureData =
-            await fixturesResponse.json();
-
 
         players =
             playerData.elements || [];
@@ -730,15 +707,49 @@ async function loadFPL() {
         teams =
             playerData.teams || [];
 
-        fixtures =
-            fixtureData || [];
-
 
         if (!players.length) {
 
             throw new Error(
                 "No player data received."
             );
+
+        }
+
+
+        // Player data is working.
+        // Now load fixtures separately.
+        try {
+
+            const fixturesResponse =
+                await fetch(
+                    WORKER_URL + "/api/fixtures"
+                );
+
+            if (fixturesResponse.ok) {
+
+                const fixtureData =
+                    await fixturesResponse.json();
+
+                fixtures =
+                    Array.isArray(fixtureData)
+                        ? fixtureData
+                        : [];
+
+            } else {
+
+                fixtures = [];
+
+            }
+
+        } catch (fixtureError) {
+
+            console.warn(
+                "Fixture data unavailable:",
+                fixtureError
+            );
+
+            fixtures = [];
 
         }
 
