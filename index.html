@@ -828,7 +828,84 @@ let players = [];
 let teams = [];
 let fixtures = [];
 let squad = [];
+function updateSquadStats() {
 
+    const budgetElement =
+        document.getElementById("budget");
+
+    const countElement =
+        document.getElementById("player-count");
+
+    const projectedElement =
+        document.getElementById("projected");
+
+    const ratingElement =
+        document.getElementById("avg-rating");
+
+
+    if (
+        !budgetElement ||
+        !countElement ||
+        !projectedElement ||
+        !ratingElement
+    ) {
+        return;
+    }
+
+
+    const totalCost =
+        squad.reduce(
+            (sum, player) =>
+                sum + getPrice(player),
+            0
+        );
+
+
+    const remaining =
+        100 - totalCost;
+
+
+    const projected =
+        squad.reduce(
+            (sum, player) =>
+                sum +
+                calculateAnalytics(player)
+                    .projection,
+            0
+        );
+
+
+    const averageRating =
+        squad.length
+            ? squad.reduce(
+                (sum, player) =>
+                    sum +
+                    calculateAnalytics(player)
+                        .overall,
+                0
+            ) / squad.length
+            : 0;
+
+
+    budgetElement.textContent =
+        "£" +
+        remaining.toFixed(1) +
+        "m";
+
+
+    countElement.textContent =
+        squad.length +
+        " / 15";
+
+
+    projectedElement.textContent =
+        projected.toFixed(1);
+
+
+    ratingElement.textContent =
+        averageRating.toFixed(1);
+
+}
 let currentPosition = "ALL";
 
 
@@ -2331,7 +2408,7 @@ function renderSquad() {
         );
 
     }
-
+updateSquadStats();
 }
 
 
