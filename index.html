@@ -347,7 +347,42 @@ function getPositionName(position) {
     return positions[position] || "";
 
 }
+function calculateAnalytics(player) {
 
+    const points = Number(player.total_points) || 0;
+    const form = Number(player.form) || 0;
+    const ppg = Number(player.points_per_game) || 0;
+    const minutes = Number(player.minutes) || 0;
+    const price = (Number(player.now_cost) || 0) / 10;
+
+    const value =
+        price > 0 ? points / price : 0;
+
+    const minutesScore =
+        Math.min(minutes / 900, 1);
+
+    const valueScore =
+        Math.min(value / 12, 1);
+
+    const formScore =
+        Math.min(form / 10, 1);
+
+    const ppgScore =
+        Math.min(ppg / 8, 1);
+
+    const overall =
+        (
+            valueScore * 25 +
+            formScore * 25 +
+            ppgScore * 30 +
+            minutesScore * 20
+        );
+
+    return {
+        value: value,
+        overall: overall
+    };
+}
 function renderPlayers() {
 
     const container =
@@ -405,7 +440,8 @@ function renderPlayers() {
 
         const card =
             document.createElement("div");
-
+const analytics =
+    calculateAnalytics(player);
         card.className = "player";
 
         card.innerHTML = `
@@ -425,10 +461,23 @@ function renderPlayers() {
             </div>
 
             <div class="stats">
-                Points: ${player.total_points || 0}<br>
-                Form: ${player.form || "0"}<br>
-                Ownership: ${player.selected_by_percent || "0"}%
-            </div>
+    Points: ${player.total_points || 0}<br>
+    Points/Game: ${player.points_per_game || "0"}<br>
+    Form: ${player.form || "0"}<br>
+    Ownership: ${player.selected_by_percent || "0"}%<br>
+    Value: ${analytics.value.toFixed(2)} pts/£m
+</div>
+
+<div style="
+    margin-top:10px;
+    padding:8px;
+    background:#f0eef1;
+    border-radius:8px;
+    font-weight:bold;
+">
+    ⭐ Analytics Score:
+    ${analytics.overall.toFixed(1)}/100
+</div>
 
             <br>
 
