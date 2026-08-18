@@ -31,7 +31,7 @@ header h1 {
 
 header p {
     margin: 6px 0 0;
-    opacity: 0.85;
+    opacity: .85;
 }
 
 .container {
@@ -40,9 +40,17 @@ header p {
     padding: 20px;
 }
 
+.status {
+    background: white;
+    padding: 14px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
 .dashboard {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3,1fr);
     gap: 12px;
     margin-bottom: 20px;
 }
@@ -87,7 +95,7 @@ input {
 
 .players {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill,minmax(250px,1fr));
     gap: 12px;
 }
 
@@ -108,9 +116,21 @@ input {
     color: #37003c;
 }
 
+.team {
+    color: #666;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
 .price {
     font-weight: bold;
     margin-top: 8px;
+}
+
+.stats {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #555;
 }
 
 button {
@@ -120,16 +140,10 @@ button {
     background: #37003c;
     color: white;
     font-weight: bold;
-    cursor: pointer;
-}
-
-button:hover {
-    opacity: .9;
 }
 
 button:disabled {
     background: #aaa;
-    cursor: not-allowed;
 }
 
 .squad {
@@ -138,7 +152,7 @@ button:disabled {
 
 .squad-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(5,1fr);
     gap: 10px;
 }
 
@@ -163,13 +177,25 @@ button:disabled {
     margin-top: 5px;
 }
 
+.loading {
+    text-align: center;
+    padding: 30px;
+    background: white;
+    border-radius: 10px;
+}
+
+.error {
+    color: #b00020;
+    font-weight: bold;
+}
+
 @media(max-width:700px) {
     .dashboard {
         grid-template-columns: 1fr;
     }
 
     .squad-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2,1fr);
     }
 }
 </style>
@@ -179,10 +205,14 @@ button:disabled {
 
 <header>
     <h1>⚽ FPL Squad Builder</h1>
-    <p>Build your Fantasy Premier League squad</p>
+    <p>Live Fantasy Premier League data</p>
 </header>
 
 <div class="container">
+
+    <div class="status" id="status">
+        Loading current FPL player data...
+    </div>
 
     <div class="dashboard">
 
@@ -206,25 +236,29 @@ button:disabled {
     <div class="controls">
 
         <input
-            type="text"
             id="search"
+            type="text"
             placeholder="Search players..."
             oninput="renderPlayers()"
         >
 
         <select id="positionFilter" onchange="renderPlayers()">
             <option value="ALL">All Positions</option>
-            <option value="GK">Goalkeepers</option>
-            <option value="DEF">Defenders</option>
-            <option value="MID">Midfielders</option>
-            <option value="FWD">Forwards</option>
+            <option value="1">Goalkeepers</option>
+            <option value="2">Defenders</option>
+            <option value="3">Midfielders</option>
+            <option value="4">Forwards</option>
         </select>
 
     </div>
 
     <h2>Players</h2>
 
-    <div class="players" id="players"></div>
+    <div class="players" id="players">
+        <div class="loading">
+            Loading players...
+        </div>
+    </div>
 
     <div class="squad">
 
@@ -242,115 +276,214 @@ button:disabled {
 
 <script>
 
-const players = [
-
-    {name:"Erling Haaland", position:"FWD", price:14.5},
-    {name:"Mohamed Salah", position:"MID", price:14.0},
-    {name:"Bukayo Saka", position:"MID", price:10.0},
-    {name:"Cole Palmer", position:"MID", price:10.5},
-    {name:"Alexander Isak", position:"FWD", price:9.5},
-    {name:"Ollie Watkins", position:"FWD", price:8.5},
-    {name:"Son Heung-min", position:"MID", price:9.0},
-    {name:"Phil Foden", position:"MID", price:9.0},
-    {name:"Martin Ødegaard", position:"MID", price:8.5},
-    {name:"Bruno Fernandes", position:"MID", price:9.0},
-
-    {name:"William Saliba", position:"DEF", price:6.0},
-    {name:"Gabriel", position:"DEF", price:6.0},
-    {name:"Trent Alexander-Arnold", position:"DEF", price:6.5},
-    {name:"Andrew Robertson", position:"DEF", price:5.5},
-    {name:"Ben White", position:"DEF", price:5.5},
-
-    {name:"Alisson", position:"GK", price:5.5},
-    {name:"David Raya", position:"GK", price:5.5},
-    {name:"Jordan Pickford", position:"GK", price:5.0},
-
-    {name:"Anthony Gordon", position:"MID", price:7.0},
-    {name:"Eberechi Eze", position:"MID", price:7.0},
-    {name:"Jarrod Bowen", position:"MID", price:7.5},
-    {name:"James Maddison", position:"MID", price:7.5},
-
-    {name:"Dominic Solanke", position:"FWD", price:7.5},
-    {name:"Darwin Núñez", position:"FWD", price:8.0},
-    {name:"Jean-Philippe Mateta", position:"FWD", price:7.0}
-
-];
-
+let players = [];
+let teams = [];
 let squad = [];
 
-function renderPlayers() {
+const FPL_URL =
+    "https://fantasy.premierleague.com/api/bootstrap-static/";
 
-    const container = document.getElementById("players");
+async function loadFPLData() {
 
-    const search =
-        document.getElementById("search").value.toLowerCase();
+    try {
 
-    const filter =
-        document.getElementById("positionFilter").value;
+        const response = await fetch(FPL_URL);
 
-    container.innerHTML = "";
+        if (!response.ok) {
+            throw new Error("FPL server returned an error.");
+        }
 
-    players
-        .filter(player =>
-            player.name.toLowerCase().includes(search)
-        )
-        .filter(player =>
-            filter === "ALL" || player.position === filter
-        )
-        .forEach(player => {
+        const data = await response.json();
 
-            const card = document.createElement("div");
+        teams = data.teams;
 
-            card.className = "player";
+        players = data.elements;
 
-            const alreadySelected =
-                squad.some(p => p.name === player.name);
+        document.getElementById("status").innerHTML =
+            "✅ Loaded " +
+            players.length +
+            " players from the official FPL database.";
 
-            card.innerHTML = `
+        renderPlayers();
 
-                <h3>${player.name}</h3>
+    } catch (error) {
 
-                <div class="position">
-                    ${player.position}
-                </div>
+        console.error(error);
 
-                <div class="price">
-                    £${player.price.toFixed(1)}m
-                </div>
+        document.getElementById("status").innerHTML =
+            '<span class="error">' +
+            "⚠️ Could not load live FPL data. " +
+            "The FPL data server may be blocking browser requests." +
+            "</span>";
 
-                <br>
+        document.getElementById("players").innerHTML =
+            '<div class="loading">' +
+            "Live player data could not be loaded." +
+            "</div>";
 
-                <button
-                    onclick="addPlayer('${player.name}')"
-                    ${alreadySelected ? "disabled" : ""}
-                >
-                    ${alreadySelected ? "Selected" : "Add Player"}
-                </button>
-
-            `;
-
-            container.appendChild(card);
-
-        });
+    }
 
 }
 
-function addPlayer(name) {
+function getTeamName(teamId) {
+
+    const team = teams.find(
+        team => team.id === teamId
+    );
+
+    return team ? team.name : "Unknown";
+
+}
+
+function getPositionName(position) {
+
+    const positions = {
+        1: "GK",
+        2: "DEF",
+        3: "MID",
+        4: "FWD"
+    };
+
+    return positions[position] || "";
+
+}
+
+function renderPlayers() {
+
+    const container =
+        document.getElementById("players");
+
+    const search =
+        document
+            .getElementById("search")
+            .value
+            .toLowerCase();
+
+    const filter =
+        document
+            .getElementById("positionFilter")
+            .value;
+
+    container.innerHTML = "";
+
+    const filtered =
+        players
+            .filter(player => {
+
+                const first =
+                    player.first_name || "";
+
+                const last =
+                    player.second_name || "";
+
+                const name =
+                    (first + " " + last)
+                        .toLowerCase();
+
+                return name.includes(search);
+
+            })
+            .filter(player => {
+
+                return filter === "ALL" ||
+                    String(player.element_type) === filter;
+
+            })
+            .slice(0,100);
+
+    filtered.forEach(player => {
+
+        const name =
+            player.first_name +
+            " " +
+            player.second_name;
+
+        const selected =
+            squad.some(
+                p => p.id === player.id
+            );
+
+        const card =
+            document.createElement("div");
+
+        card.className = "player";
+
+        card.innerHTML = `
+
+            <h3>${name}</h3>
+
+            <div class="position">
+                ${getPositionName(player.element_type)}
+            </div>
+
+            <div class="team">
+                ${getTeamName(player.team)}
+            </div>
+
+            <div class="price">
+                £${(player.now_cost / 10).toFixed(1)}m
+            </div>
+
+            <div class="stats">
+                Points: ${player.total_points || 0}<br>
+                Form: ${player.form || "0"}<br>
+                Ownership: ${player.selected_by_percent || "0"}%
+            </div>
+
+            <br>
+
+            <button
+                onclick="addPlayer(${player.id})"
+                ${selected ? "disabled" : ""}
+            >
+                ${selected ? "Selected" : "Add Player"}
+            </button>
+
+        `;
+
+        container.appendChild(card);
+
+    });
+
+}
+
+function addPlayer(id) {
 
     if (squad.length >= 15) {
-        alert("Your squad already has 15 players.");
+
+        alert(
+            "Your squad already has 15 players."
+        );
+
         return;
+
     }
 
     const player =
-        players.find(p => p.name === name);
+        players.find(
+            p => p.id === id
+        );
+
+    if (!player) return;
+
+    const price =
+        player.now_cost / 10;
 
     const spent =
-        squad.reduce((sum,p) => sum + p.price, 0);
+        squad.reduce(
+            (sum,p) =>
+                sum + (p.now_cost / 10),
+            0
+        );
 
-    if (spent + player.price > 100) {
-        alert("You don't have enough budget.");
+    if (spent + price > 100) {
+
+        alert(
+            "You don't have enough budget."
+        );
+
         return;
+
     }
 
     squad.push(player);
@@ -373,12 +506,17 @@ function removePlayer(index) {
 
 function updateSquad() {
 
-    const squadContainer =
+    const container =
         document.getElementById("squad");
 
-    squadContainer.innerHTML = "";
+    container.innerHTML = "";
 
     squad.forEach((player,index) => {
+
+        const name =
+            player.first_name +
+            " " +
+            player.second_name;
 
         const slot =
             document.createElement("div");
@@ -387,15 +525,19 @@ function updateSquad() {
 
         slot.innerHTML = `
 
-            <strong>${player.name}</strong>
+            <strong>${name}</strong>
 
             <small>
-                ${player.position}
+                ${getPositionName(
+                    player.element_type
+                )}
             </small>
 
             <br>
 
-            £${player.price.toFixed(1)}m
+            £${(
+                player.now_cost / 10
+            ).toFixed(1)}m
 
             <br>
 
@@ -408,12 +550,16 @@ function updateSquad() {
 
         `;
 
-        squadContainer.appendChild(slot);
+        container.appendChild(slot);
 
     });
 
     const spent =
-        squad.reduce((sum,p) => sum + p.price, 0);
+        squad.reduce(
+            (sum,p) =>
+                sum + (p.now_cost / 10),
+            0
+        );
 
     document.getElementById("spent").innerText =
         "£" + spent.toFixed(1) + "m";
@@ -422,11 +568,12 @@ function updateSquad() {
         "£" + (100 - spent).toFixed(1) + "m";
 
     document.getElementById("squadStatus").innerText =
-        squad.length + " / 15 players selected";
+        squad.length +
+        " / 15 players selected";
 
 }
 
-renderPlayers();
+loadFPLData();
 
 </script>
 
