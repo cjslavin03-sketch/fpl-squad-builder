@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>FPL Squad Builder</title>
 
 <style>
@@ -13,14 +14,14 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    background: #f4f5f7;
-    color: #222;
+    background: #f4f1f5;
+    color: #171717;
 }
 
 header {
     background: #37003c;
     color: white;
-    padding: 20px;
+    padding: 22px 16px;
     text-align: center;
 }
 
@@ -30,72 +31,92 @@ header h1 {
 }
 
 header p {
-    margin: 6px 0 0;
+    margin: 7px 0 0;
     opacity: .85;
 }
 
 .container {
-    max-width: 1100px;
+    max-width: 1200px;
     margin: auto;
-    padding: 20px;
+    padding: 16px;
 }
 
 .status {
     background: white;
-    padding: 14px;
+    padding: 12px 15px;
     border-radius: 10px;
-    margin-bottom: 18px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
-}
-
-.dashboard {
-    display: grid;
-    grid-template-columns: repeat(3,1fr);
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.stat {
-    background: white;
-    border-radius: 12px;
-    padding: 15px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
-}
-
-.stat-title {
-    font-size: 12px;
-    color: #777;
-    text-transform: uppercase;
-}
-
-.stat-value {
-    font-size: 24px;
+    margin-bottom: 15px;
     font-weight: bold;
-    margin-top: 5px;
 }
 
 .controls {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 15px;
 }
 
-input, select {
-    padding: 12px;
+input,
+select,
+button {
+    font: inherit;
+}
+
+input,
+select {
+    padding: 11px;
     border: 1px solid #ccc;
     border-radius: 8px;
-    font-size: 15px;
+    background: white;
 }
 
-input {
-    flex: 1;
-    min-width: 200px;
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+.filter-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.filter-buttons button {
+    background: #eee;
+}
+
+.filter-buttons button.active {
+    background: #37003c;
+    color: white;
+}
+
+.summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.summary-card {
+    background: white;
+    padding: 14px;
+    border-radius: 10px;
+}
+
+.summary-card strong {
+    display: block;
+    font-size: 20px;
+    margin-top: 4px;
 }
 
 .players {
     display: grid;
-    grid-template-columns: repeat(auto-fill,minmax(250px,1fr));
+    grid-template-columns: 1fr;
     gap: 12px;
 }
 
@@ -103,99 +124,136 @@ input {
     background: white;
     border-radius: 12px;
     padding: 15px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    box-shadow: 0 2px 7px rgba(0,0,0,.08);
+}
+
+.player-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
 }
 
 .player h3 {
-    margin: 0 0 5px;
+    margin: 0 0 4px;
+    font-size: 18px;
 }
 
 .position {
-    font-size: 12px;
-    font-weight: bold;
-    color: #37003c;
-}
-
-.team {
-    color: #666;
     font-size: 13px;
-    margin-top: 4px;
+    font-weight: bold;
+    opacity: .65;
 }
 
 .price {
     font-weight: bold;
-    margin-top: 8px;
+    font-size: 18px;
 }
 
 .stats {
-    margin-top: 8px;
-    font-size: 13px;
-    color: #555;
+    margin-top: 12px;
+    line-height: 1.6;
+    font-size: 14px;
 }
 
-button {
-    border: none;
-    border-radius: 8px;
-    padding: 10px 14px;
+.analytics {
+    margin-top: 12px;
+    background: #f0edf1;
+    padding: 12px;
+    border-radius: 9px;
+}
+
+.analytics-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.rating-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 4px 0;
+    font-size: 14px;
+}
+
+.rating-bar {
+    height: 7px;
+    background: #ddd;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 3px;
+}
+
+.rating-fill {
+    height: 100%;
     background: #37003c;
-    color: white;
+}
+
+.add {
+    width: 100%;
+    margin-top: 12px;
+    background: #00ff87;
     font-weight: bold;
 }
 
-button:disabled {
-    background: #aaa;
+.remove {
+    background: #ddd;
 }
 
 .squad {
-    margin-top: 30px;
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 18px;
+}
+
+.squad h2 {
+    margin-top: 0;
 }
 
 .squad-grid {
     display: grid;
-    grid-template-columns: repeat(5,1fr);
-    gap: 10px;
+    grid-template-columns: 1fr;
+    gap: 7px;
 }
 
-.slot {
-    background: white;
-    border-radius: 10px;
-    min-height: 90px;
-    padding: 10px;
-    text-align: center;
-    border: 2px dashed #ccc;
+.squad-player {
+    display: flex;
+    justify-content: space-between;
+    padding: 9px;
+    background: #f4f1f5;
+    border-radius: 7px;
 }
 
-.slot strong {
-    display: block;
-    margin-bottom: 5px;
+.notice {
+    background: #fff7d6;
+    padding: 12px;
+    border-radius: 9px;
+    margin-bottom: 15px;
+    font-size: 14px;
 }
 
-.remove {
-    background: #d32f2f;
-    font-size: 11px;
-    padding: 5px 8px;
-    margin-top: 5px;
-}
+@media (min-width: 700px) {
 
-.loading {
-    text-align: center;
-    padding: 30px;
-    background: white;
-    border-radius: 10px;
-}
+    .controls {
+        grid-template-columns: 2fr 1fr;
+    }
 
-.error {
-    color: #b00020;
-    font-weight: bold;
-}
+    .players {
+        grid-template-columns: repeat(2, 1fr);
+    }
 
-@media(max-width:700px) {
-    .dashboard {
-        grid-template-columns: 1fr;
+    .summary {
+        grid-template-columns: repeat(4, 1fr);
     }
 
     .squad-grid {
-        grid-template-columns: repeat(2,1fr);
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1050px) {
+
+    .players {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 </style>
@@ -205,31 +263,51 @@ button:disabled {
 
 <header>
     <h1>⚽ FPL Squad Builder</h1>
-    <p>Live Fantasy Premier League data</p>
+    <p>Live FPL data + intelligent player analytics</p>
 </header>
 
 <div class="container">
 
-    <div class="status" id="status">
-        Loading current FPL player data...
+    <div id="status" class="status">
+        ⏳ Loading live FPL data...
     </div>
 
-    <div class="dashboard">
+    <div class="notice">
+        <strong>🧠 Analytics note:</strong>
+        Player ratings are designed to balance production, value,
+        minutes security, upside and uncertainty. Preseason is treated
+        as a small signal rather than a replacement for competitive data.
+    </div>
 
-        <div class="stat">
-            <div class="stat-title">Budget</div>
-            <div class="stat-value">£100.0m</div>
+    <div class="squad">
+
+        <h2>My Squad</h2>
+
+        <div class="summary">
+
+            <div class="summary-card">
+                Budget
+                <strong id="budget">£100.0m</strong>
+            </div>
+
+            <div class="summary-card">
+                Players
+                <strong id="player-count">0 / 15</strong>
+            </div>
+
+            <div class="summary-card">
+                Projected
+                <strong id="projected">0.0</strong>
+            </div>
+
+            <div class="summary-card">
+                Avg Rating
+                <strong id="avg-rating">0</strong>
+            </div>
+
         </div>
 
-        <div class="stat">
-            <div class="stat-title">Spent</div>
-            <div class="stat-value" id="spent">£0.0m</div>
-        </div>
-
-        <div class="stat">
-            <div class="stat-title">Remaining</div>
-            <div class="stat-value" id="remaining">£100.0m</div>
-        </div>
+        <div id="squad" class="squad-grid"></div>
 
     </div>
 
@@ -239,150 +317,537 @@ button:disabled {
             id="search"
             type="text"
             placeholder="Search players..."
-            oninput="renderPlayers()"
         >
 
-        <select id="positionFilter" onchange="renderPlayers()">
-            <option value="ALL">All Positions</option>
-            <option value="1">Goalkeepers</option>
-            <option value="2">Defenders</option>
-            <option value="3">Midfielders</option>
-            <option value="4">Forwards</option>
+        <select id="sort">
+            <option value="overall">Best Overall</option>
+            <option value="projection">Projected Points</option>
+            <option value="value">Best Value</option>
+            <option value="minutes">Minutes Security</option>
+            <option value="upside">Highest Upside</option>
+            <option value="confidence">Highest Confidence</option>
+            <option value="price-low">Price: Low → High</option>
+            <option value="price-high">Price: High → Low</option>
+            <option value="points">Total Points</option>
         </select>
 
-    </div>
+        <div class="filter-buttons">
 
-    <h2>Players</h2>
+            <button class="active" data-position="ALL">
+                All
+            </button>
 
-    <div class="players" id="players">
-        <div class="loading">
-            Loading players...
+            <button data-position="GK">
+                GK
+            </button>
+
+            <button data-position="DEF">
+                DEF
+            </button>
+
+            <button data-position="MID">
+                MID
+            </button>
+
+            <button data-position="FWD">
+                FWD
+            </button>
+
         </div>
-    </div>
-
-    <div class="squad">
-
-        <h2>Your Squad</h2>
-
-        <p id="squadStatus">
-            0 / 15 players selected
-        </p>
-
-        <div class="squad-grid" id="squad"></div>
 
     </div>
+
+    <div id="players" class="players"></div>
 
 </div>
 
 <script>
 
+/* =========================================================
+   CONFIGURATION
+========================================================= */
+
+const WORKER_URL =
+    "https://jolly-glitter-bb07.cjslavin03.workers.dev";
+
+
+/* =========================================================
+   GLOBAL DATA
+========================================================= */
+
 let players = [];
 let teams = [];
 let squad = [];
 
-const FPL_URL =
-    "https://jolly-glitter-bb07.cjslavin03.workers.dev";
+let currentPosition = "ALL";
 
-async function loadFPLData() {
+
+/* =========================================================
+   POSITION NAMES
+========================================================= */
+
+const positions = {
+    1: "GK",
+    2: "DEF",
+    3: "MID",
+    4: "FWD"
+};
+
+
+/* =========================================================
+   LOAD FPL DATA
+========================================================= */
+
+async function loadFPL() {
+
+    const status =
+        document.getElementById("status");
 
     try {
 
-        const response = await fetch(FPL_URL);
+        const response =
+            await fetch(WORKER_URL);
 
         if (!response.ok) {
-            throw new Error("FPL server returned an error.");
+            throw new Error(
+                "Worker returned HTTP " +
+                response.status
+            );
         }
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
-        teams = data.teams;
+        players =
+            data.elements || [];
 
-        players = data.elements;
+        teams =
+            data.teams || [];
 
-        document.getElementById("status").innerHTML =
+        if (!players.length) {
+            throw new Error(
+                "No player data received."
+            );
+        }
+
+        status.innerHTML =
             "✅ Loaded " +
             players.length +
             " players from the official FPL database.";
 
         renderPlayers();
+        renderSquad();
 
     } catch (error) {
 
         console.error(error);
 
-        document.getElementById("status").innerHTML =
-            '<span class="error">' +
+        status.innerHTML =
             "⚠️ Could not load live FPL data. " +
-            "The FPL data server may be blocking browser requests." +
-            "</span>";
-
-        document.getElementById("players").innerHTML =
-            '<div class="loading">' +
-            "Live player data could not be loaded." +
-            "</div>";
+            "Check your Cloudflare Worker URL.";
 
     }
 
 }
 
+
+/* =========================================================
+   TEAM NAME
+========================================================= */
+
 function getTeamName(teamId) {
 
-    const team = teams.find(
-        team => team.id === teamId
+    const team =
+        teams.find(
+            t => Number(t.id) === Number(teamId)
+        );
+
+    return team
+        ? team.name
+        : "Unknown";
+
+}
+
+
+/* =========================================================
+   PRICE
+========================================================= */
+
+function getPrice(player) {
+
+    return (
+        Number(player.now_cost || 0) / 10
     );
 
-    return team ? team.name : "Unknown";
+}
+
+
+/* =========================================================
+   BASIC DATA NORMALIZATION
+========================================================= */
+
+function num(value) {
+
+    const n = Number(value);
+
+    return Number.isFinite(n)
+        ? n
+        : 0;
 
 }
 
-function getPositionName(position) {
 
-    const positions = {
-        1: "GK",
-        2: "DEF",
-        3: "MID",
-        4: "FWD"
-    };
+/* =========================================================
+   ANALYTICS ENGINE
+=========================================================
 
-    return positions[position] || "";
+   IMPORTANT:
 
-}
+   This is intentionally conservative before GW1.
+
+   We do NOT treat preseason as equivalent to
+   competitive Premier League performance.
+
+   The FPL API does provide current player fields
+   such as points, form, minutes, price, etc.
+
+   New players and players with limited PL history
+   receive lower confidence rather than automatically
+   receiving a terrible score.
+========================================================= */
+
 function calculateAnalytics(player) {
 
-    const points = Number(player.total_points) || 0;
-    const form = Number(player.form) || 0;
-    const ppg = Number(player.points_per_game) || 0;
-    const minutes = Number(player.minutes) || 0;
-    const price = (Number(player.now_cost) || 0) / 10;
+    const points =
+        num(player.total_points);
 
-    const value =
-        price > 0 ? points / price : 0;
+    const ppg =
+        num(player.points_per_game);
 
-    const minutesScore =
-        Math.min(minutes / 900, 1);
+    const minutes =
+        num(player.minutes);
 
-    const valueScore =
-        Math.min(value / 12, 1);
+    const form =
+        num(player.form);
 
-    const formScore =
-        Math.min(form / 10, 1);
+    const price =
+        getPrice(player);
 
-    const ppgScore =
-        Math.min(ppg / 8, 1);
+    const ownership =
+        num(player.selected_by_percent);
+
+    const position =
+        positions[player.element_type] || "MID";
+
+
+    /* ---------------------------------------------
+       MINUTES SECURITY
+    --------------------------------------------- */
+
+    /*
+       Before a meaningful current-season sample exists,
+       minutes are treated cautiously.
+
+       This prevents preseason/random appearances from
+       becoming an enormous positive signal.
+    */
+
+    let minutesScore;
+
+    if (minutes <= 0) {
+
+        minutesScore = 45;
+
+    } else {
+
+        minutesScore =
+            Math.min(
+                95,
+                40 + (minutes / 1000) * 55
+            );
+
+    }
+
+
+    /* ---------------------------------------------
+       PERFORMANCE
+    --------------------------------------------- */
+
+    let ppgScore;
+
+    if (ppg <= 0) {
+
+        ppgScore = 35;
+
+    } else {
+
+        ppgScore =
+            Math.min(
+                95,
+                35 + (ppg / 7) * 60
+            );
+
+    }
+
+
+    /* ---------------------------------------------
+       FORM
+    --------------------------------------------- */
+
+    /*
+       Form gets deliberately LOW influence.
+
+       This is especially important during preseason
+       because raw preseason minutes/form can be noisy.
+    */
+
+    let formScore;
+
+    if (form <= 0) {
+
+        formScore = 50;
+
+    } else {
+
+        formScore =
+            Math.min(
+                95,
+                40 + (form / 8) * 55
+            );
+
+    }
+
+
+    /* ---------------------------------------------
+       VALUE
+    --------------------------------------------- */
+
+    let valueScore = 50;
+
+    if (price > 0 && points > 0) {
+
+        const pointsPerMillion =
+            points / price;
+
+        valueScore =
+            Math.min(
+                98,
+                40 +
+                pointsPerMillion * 2.5
+            );
+
+    }
+
+
+    /* ---------------------------------------------
+       OWNERSHIP / DIFFERENTIAL
+    --------------------------------------------- */
+
+    /*
+       Ownership is NOT considered a measure of quality.
+
+       Lower ownership simply means more differential
+       potential.
+    */
+
+    const differentialScore =
+        Math.max(
+            5,
+            Math.min(
+                95,
+                95 - ownership
+            )
+        );
+
+
+    /* ---------------------------------------------
+       POSITION ADJUSTMENTS
+    --------------------------------------------- */
+
+    let positionAdjustment = 0;
+
+    if (position === "GK") {
+
+        positionAdjustment = 3;
+
+    } else if (position === "DEF") {
+
+        positionAdjustment = 2;
+
+    } else if (position === "MID") {
+
+        positionAdjustment = 0;
+
+    } else if (position === "FWD") {
+
+        positionAdjustment = 1;
+
+    }
+
+
+    /* ---------------------------------------------
+       CONFIDENCE
+    --------------------------------------------- */
+
+    /*
+       Confidence is intentionally separate from ability.
+
+       Someone with limited PL history can have high upside
+       but lower confidence.
+    */
+
+    let confidence = 60;
+
+    if (minutes > 1000) {
+
+        confidence += 15;
+
+    } else if (minutes > 500) {
+
+        confidence += 8;
+
+    }
+
+    if (points > 100) {
+
+        confidence += 8;
+
+    }
+
+    if (ppg > 5) {
+
+        confidence += 5;
+
+    }
+
+    confidence =
+        Math.min(
+            95,
+            confidence
+        );
+
+
+    /* ---------------------------------------------
+       UPSIDE
+    --------------------------------------------- */
+
+    let upside =
+        (
+            valueScore * 0.35 +
+            ppgScore * 0.30 +
+            differentialScore * 0.20 +
+            minutesScore * 0.15
+        );
+
+    /*
+       Low confidence does NOT mean low upside.
+
+       In fact, a cheap player with uncertain information
+       can have tremendous upside.
+    */
+
+    upside =
+        Math.min(
+            98,
+            upside + positionAdjustment
+        );
+
+
+    /* ---------------------------------------------
+       PROJECTED POINTS
+    --------------------------------------------- */
+
+    let projection;
+
+    if (ppg > 0) {
+
+        projection =
+            ppg * 0.75 +
+            (minutesScore / 100) * 1.2 +
+            (valueScore / 100) * 0.8;
+
+    } else {
+
+        projection =
+            3.5 +
+            (minutesScore / 100) * 1.0;
+
+    }
+
+
+    /*
+       Prevent ridiculous projections.
+    */
+
+    projection =
+        Math.max(
+            2.5,
+            Math.min(
+                10,
+                projection
+            )
+        );
+
+
+    /* ---------------------------------------------
+       OVERALL
+    --------------------------------------------- */
+
+    /*
+       The overall score deliberately DOES NOT allow
+       raw total points to dominate.
+
+       This prevents established players from automatically
+       beating every newcomer.
+    */
 
     const overall =
         (
-            valueScore * 25 +
-            formScore * 25 +
-            ppgScore * 30 +
-            minutesScore * 20
+            projection / 10 * 35 +
+            valueScore * 0.20 +
+            minutesScore * 0.20 +
+            upside * 0.15 +
+            confidence * 0.10
         );
 
+
     return {
-        value: value,
-        overall: overall
+
+        projection:
+            Number(projection.toFixed(1)),
+
+        valueScore:
+            Number(valueScore.toFixed(1)),
+
+        minutesScore:
+            Number(minutesScore.toFixed(1)),
+
+        confidence:
+            Number(confidence.toFixed(1)),
+
+        upside:
+            Number(upside.toFixed(1)),
+
+        differentialScore:
+            Number(differentialScore.toFixed(1)),
+
+        overall:
+            Number(
+                Math.min(
+                    99,
+                    overall
+                ).toFixed(1)
+            )
+
     };
+
 }
+
+
+/* =========================================================
+   RENDER PLAYERS
+========================================================= */
+
 function renderPlayers() {
 
     const container =
@@ -394,101 +859,303 @@ function renderPlayers() {
             .value
             .toLowerCase();
 
-    const filter =
+    const sort =
         document
-            .getElementById("positionFilter")
+            .getElementById("sort")
             .value;
+
+
+    let filtered =
+        players.filter(player => {
+
+            const name =
+                (
+                    player.first_name +
+                    " " +
+                    player.second_name
+                ).toLowerCase();
+
+            const position =
+                positions[player.element_type];
+
+
+            const matchesSearch =
+                name.includes(search);
+
+            const matchesPosition =
+                currentPosition === "ALL" ||
+                position === currentPosition;
+
+
+            return (
+                matchesSearch &&
+                matchesPosition
+            );
+
+        });
+
+
+    /* ---------------------------------------------
+       CALCULATE ANALYTICS
+    --------------------------------------------- */
+
+    const enriched =
+        filtered.map(player => {
+
+            return {
+
+                ...player,
+
+                analytics:
+                    calculateAnalytics(player)
+
+            };
+
+        });
+
+
+    /* ---------------------------------------------
+       SORT
+    --------------------------------------------- */
+
+    enriched.sort((a, b) => {
+
+        const A = a.analytics;
+        const B = b.analytics;
+
+
+        if (sort === "overall") {
+
+            return B.overall - A.overall;
+
+        }
+
+        if (sort === "projection") {
+
+            return B.projection - A.projection;
+
+        }
+
+        if (sort === "value") {
+
+            return B.valueScore - A.valueScore;
+
+        }
+
+        if (sort === "minutes") {
+
+            return B.minutesScore - A.minutesScore;
+
+        }
+
+        if (sort === "upside") {
+
+            return B.upside - A.upside;
+
+        }
+
+        if (sort === "confidence") {
+
+            return B.confidence - A.confidence;
+
+        }
+
+        if (sort === "price-low") {
+
+            return getPrice(a) - getPrice(b);
+
+        }
+
+        if (sort === "price-high") {
+
+            return getPrice(b) - getPrice(a);
+
+        }
+
+        if (sort === "points") {
+
+            return (
+                num(b.total_points) -
+                num(a.total_points)
+            );
+
+        }
+
+        return 0;
+
+    });
+
 
     container.innerHTML = "";
 
-    const filtered =
-        players
-            .filter(player => {
 
-                const first =
-                    player.first_name || "";
+    /* ---------------------------------------------
+       CREATE CARDS
+    --------------------------------------------- */
 
-                const last =
-                    player.second_name || "";
+    enriched.forEach(player => {
 
-                const name =
-                    (first + " " + last)
-                        .toLowerCase();
+        const analytics =
+            player.analytics;
 
-                return name.includes(search);
+        const position =
+            positions[player.element_type];
 
-            })
-            .filter(player => {
-
-                return filter === "ALL" ||
-                    String(player.element_type) === filter;
-
-            })
-            .slice(0,100);
-
-    filtered.forEach(player => {
-
-        const name =
-            player.first_name +
-            " " +
-            player.second_name;
+        const price =
+            getPrice(player);
 
         const selected =
             squad.some(
                 p => p.id === player.id
             );
 
+
         const card =
             document.createElement("div");
-const analytics =
-    calculateAnalytics(player);
-        card.className = "player";
+
+        card.className =
+            "player";
+
 
         card.innerHTML = `
 
-            <h3>${name}</h3>
+            <div class="player-header">
 
-            <div class="position">
-                ${getPositionName(player.element_type)}
+                <div>
+
+                    <h3>
+                        ${player.first_name}
+                        ${player.second_name}
+                    </h3>
+
+                    <div class="position">
+                        ${position}
+                        •
+                        ${getTeamName(player.team)}
+                    </div>
+
+                </div>
+
+                <div class="price">
+                    £${price.toFixed(1)}m
+                </div>
+
             </div>
 
-            <div class="team">
-                ${getTeamName(player.team)}
-            </div>
-
-            <div class="price">
-                £${(player.now_cost / 10).toFixed(1)}m
-            </div>
 
             <div class="stats">
-    Points: ${player.total_points || 0}<br>
-    Points/Game: ${player.points_per_game || "0"}<br>
-    Form: ${player.form || "0"}<br>
-    Ownership: ${player.selected_by_percent || "0"}%<br>
-    Value: ${analytics.value.toFixed(2)} pts/£m
-</div>
 
-<div style="
-    margin-top:10px;
-    padding:8px;
-    background:#f0eef1;
-    border-radius:8px;
-    font-weight:bold;
-">
-    ⭐ Analytics Score:
-    ${analytics.overall.toFixed(1)}/100
-</div>
+                <strong>FPL Stats</strong><br>
 
-            <br>
+                Points:
+                ${num(player.total_points)}
+                <br>
+
+                Points/Game:
+                ${num(player.points_per_game).toFixed(1)}
+                <br>
+
+                Form:
+                ${num(player.form).toFixed(1)}
+                <br>
+
+                Minutes:
+                ${num(player.minutes)}
+                <br>
+
+                Ownership:
+                ${num(player.selected_by_percent).toFixed(1)}%
+
+            </div>
+
+
+            <div class="analytics">
+
+                <div class="analytics-title">
+                    🧠 FPL Intelligence
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Overall</span>
+                    <strong>
+                        ${analytics.overall}/100
+                    </strong>
+                </div>
+
+                <div class="rating-bar">
+                    <div
+                        class="rating-fill"
+                        style="width:${analytics.overall}%"
+                    ></div>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Projected Points</span>
+                    <strong>
+                        ${analytics.projection}
+                    </strong>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Value</span>
+                    <strong>
+                        ${analytics.valueScore}/100
+                    </strong>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Minutes Security</span>
+                    <strong>
+                        ${analytics.minutesScore}/100
+                    </strong>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Upside</span>
+                    <strong>
+                        ${analytics.upside}/100
+                    </strong>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Confidence</span>
+                    <strong>
+                        ${analytics.confidence}/100
+                    </strong>
+                </div>
+
+
+                <div class="rating-row">
+                    <span>Differential</span>
+                    <strong>
+                        ${analytics.differentialScore}/100
+                    </strong>
+                </div>
+
+            </div>
+
 
             <button
-                onclick="addPlayer(${player.id})"
-                ${selected ? "disabled" : ""}
+                class="${selected ? "remove" : "add"}"
+                onclick="togglePlayer(${player.id})"
             >
-                ${selected ? "Selected" : "Add Player"}
+
+                ${
+                    selected
+                    ? "Remove from Squad"
+                    : "Add to Squad"
+                }
+
             </button>
 
         `;
+
 
         container.appendChild(card);
 
@@ -496,7 +1163,49 @@ const analytics =
 
 }
 
-function addPlayer(id) {
+
+/* =========================================================
+   SQUAD BUILDER
+========================================================= */
+
+function togglePlayer(playerId) {
+
+    const player =
+        players.find(
+            p => p.id === playerId
+        );
+
+    if (!player) return;
+
+
+    const existingIndex =
+        squad.findIndex(
+            p => p.id === playerId
+        );
+
+
+    /* ---------------------------------------------
+       REMOVE
+    --------------------------------------------- */
+
+    if (existingIndex !== -1) {
+
+        squad.splice(
+            existingIndex,
+            1
+        );
+
+        renderSquad();
+        renderPlayers();
+
+        return;
+
+    }
+
+
+    /* ---------------------------------------------
+       MAX 15 PLAYERS
+    --------------------------------------------- */
 
     if (squad.length >= 15) {
 
@@ -508,121 +1217,330 @@ function addPlayer(id) {
 
     }
 
-    const player =
-        players.find(
-            p => p.id === id
-        );
 
-    if (!player) return;
+    /* ---------------------------------------------
+       MAX 3 PLAYERS PER CLUB
+    --------------------------------------------- */
 
-    const price =
-        player.now_cost / 10;
+    const sameTeam =
+        squad.filter(
+            p => p.team === player.team
+        ).length;
 
-    const spent =
-        squad.reduce(
-            (sum,p) =>
-                sum + (p.now_cost / 10),
-            0
-        );
 
-    if (spent + price > 100) {
+    if (sameTeam >= 3) {
 
         alert(
-            "You don't have enough budget."
+            "You can only have 3 players from the same club."
         );
 
         return;
 
     }
 
+
+    /* ---------------------------------------------
+       POSITION LIMITS
+    --------------------------------------------- */
+
+    const position =
+        positions[player.element_type];
+
+
+    const positionCounts =
+        getPositionCounts();
+
+
+    const limits = {
+
+        GK: 2,
+        DEF: 5,
+        MID: 5,
+        FWD: 3
+
+    };
+
+
+    if (
+        positionCounts[position] >=
+        limits[position]
+    ) {
+
+        alert(
+            `You can only have ${limits[position]} ${position} players.`
+        );
+
+        return;
+
+    }
+
+
+    /* ---------------------------------------------
+       BUDGET
+    --------------------------------------------- */
+
+    const currentCost =
+        squad.reduce(
+            (sum, p) =>
+                sum + getPrice(p),
+            0
+        );
+
+
+    if (
+        currentCost +
+        getPrice(player) >
+        100
+    ) {
+
+        alert(
+            "That player would put you over the £100m budget."
+        );
+
+        return;
+
+    }
+
+
     squad.push(player);
 
-    updateSquad();
-
+    renderSquad();
     renderPlayers();
 
 }
 
-function removePlayer(index) {
 
-    squad.splice(index,1);
+/* =========================================================
+   POSITION COUNTS
+========================================================= */
 
-    updateSquad();
+function getPositionCounts() {
 
-    renderPlayers();
+    const counts = {
+
+        GK: 0,
+        DEF: 0,
+        MID: 0,
+        FWD: 0
+
+    };
+
+
+    squad.forEach(player => {
+
+        const position =
+            positions[player.element_type];
+
+        if (counts[position] !== undefined) {
+
+            counts[position]++;
+
+        }
+
+    });
+
+
+    return counts;
 
 }
 
-function updateSquad() {
+
+/* =========================================================
+   RENDER SQUAD
+========================================================= */
+
+function renderSquad() {
 
     const container =
         document.getElementById("squad");
 
-    container.innerHTML = "";
 
-    squad.forEach((player,index) => {
+    const budgetElement =
+        document.getElementById("budget");
 
-        const name =
-            player.first_name +
-            " " +
-            player.second_name;
+    const countElement =
+        document.getElementById("player-count");
 
-        const slot =
-            document.createElement("div");
+    const projectedElement =
+        document.getElementById("projected");
 
-        slot.className = "slot";
+    const ratingElement =
+        document.getElementById("avg-rating");
 
-        slot.innerHTML = `
 
-            <strong>${name}</strong>
-
-            <small>
-                ${getPositionName(
-                    player.element_type
-                )}
-            </small>
-
-            <br>
-
-            £${(
-                player.now_cost / 10
-            ).toFixed(1)}m
-
-            <br>
-
-            <button
-                class="remove"
-                onclick="removePlayer(${index})"
-            >
-                Remove
-            </button>
-
-        `;
-
-        container.appendChild(slot);
-
-    });
-
-    const spent =
+    const totalCost =
         squad.reduce(
-            (sum,p) =>
-                sum + (p.now_cost / 10),
+            (sum, player) =>
+                sum + getPrice(player),
             0
         );
 
-    document.getElementById("spent").innerText =
-        "£" + spent.toFixed(1) + "m";
 
-    document.getElementById("remaining").innerText =
-        "£" + (100 - spent).toFixed(1) + "m";
+    const remaining =
+        100 - totalCost;
 
-    document.getElementById("squadStatus").innerText =
+
+    const projected =
+        squad.reduce(
+            (sum, player) =>
+                sum +
+                calculateAnalytics(player)
+                    .projection,
+            0
+        );
+
+
+    const averageRating =
+        squad.length
+        ? squad.reduce(
+            (sum, player) =>
+                sum +
+                calculateAnalytics(player)
+                    .overall,
+            0
+        ) / squad.length
+        : 0;
+
+
+    budgetElement.textContent =
+        "£" +
+        remaining.toFixed(1) +
+        "m";
+
+
+    countElement.textContent =
         squad.length +
-        " / 15 players selected";
+        " / 15";
+
+
+    projectedElement.textContent =
+        projected.toFixed(1);
+
+
+    ratingElement.textContent =
+        averageRating.toFixed(1);
+
+
+    container.innerHTML = "";
+
+
+    if (!squad.length) {
+
+        container.innerHTML =
+            "<p>No players selected yet.</p>";
+
+        return;
+
+    }
+
+
+    squad.forEach(player => {
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "squad-player";
+
+
+        row.innerHTML = `
+
+            <span>
+
+                ${player.first_name}
+                ${player.second_name}
+
+                <small>
+                    (${positions[player.element_type]})
+                </small>
+
+            </span>
+
+            <strong>
+                £${getPrice(player).toFixed(1)}m
+            </strong>
+
+        `;
+
+
+        container.appendChild(row);
+
+    });
 
 }
 
-loadFPLData();
+
+/* =========================================================
+   SEARCH
+========================================================= */
+
+document
+    .getElementById("search")
+    .addEventListener(
+        "input",
+        renderPlayers
+    );
+
+
+/* =========================================================
+   SORT
+========================================================= */
+
+document
+    .getElementById("sort")
+    .addEventListener(
+        "change",
+        renderPlayers
+    );
+
+
+/* =========================================================
+   POSITION FILTERS
+========================================================= */
+
+document
+    .querySelectorAll(
+        ".filter-buttons button"
+    )
+    .forEach(button => {
+
+        button.addEventListener(
+            "click",
+            () => {
+
+                document
+                    .querySelectorAll(
+                        ".filter-buttons button"
+                    )
+                    .forEach(btn =>
+                        btn.classList.remove(
+                            "active"
+                        )
+                    );
+
+
+                button.classList.add(
+                    "active"
+                );
+
+
+                currentPosition =
+                    button.dataset.position;
+
+
+                renderPlayers();
+
+            }
+        );
+
+    });
+
+
+/* =========================================================
+   START
+========================================================= */
+
+loadFPL();
 
 </script>
 
