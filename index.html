@@ -828,7 +828,7 @@ let players = [];
 let teams = [];
 let fixtures = [];
 let squad = [];
-
+let currentRenderFormation = "3-4-3";
 let currentPosition = "ALL";
 
 
@@ -2125,7 +2125,7 @@ if (formation === "AUTO") {
     formation = chooseBestFormation();
 
 }
-
+currentRenderFormation = formation;
 
 // -----------------------------------------------------
 // Separate squad by position
@@ -2343,12 +2343,51 @@ function renderPitchRow(
     position
 ) {
 
-    const required =
-        position === "GK" ? 1 :
-        position === "DEF" ? 4 :
-        position === "MID" ? 3 :
-        3;
+    let required = 0;
 
+
+    // -----------------------------------------------------
+    // Determine number of slots from current formation
+    // -----------------------------------------------------
+
+    if (position === "GK") {
+
+        required = 1;
+
+    } else {
+
+        if (position === "GK") {
+
+        required = 1;
+
+    } else {
+
+        const parts =
+    currentRenderFormation
+        .split("-")
+        .map(Number);
+
+
+        if (position === "DEF") {
+
+            required = parts[0];
+
+        } else if (position === "MID") {
+
+            required = parts[1];
+
+        } else if (position === "FWD") {
+
+            required = parts[2];
+
+        }
+
+    }
+
+
+    // -----------------------------------------------------
+    // Render players / empty slots
+    // -----------------------------------------------------
 
     for (
         let i = 0;
@@ -2380,8 +2419,9 @@ function renderPitchRow(
 
                 '<div class="pitch-player-price">' +
                     "£" +
-                    Number(player.now_cost / 10)
-                        .toFixed(1) +
+                    Number(
+                        player.now_cost / 10
+                    ).toFixed(1) +
                     "m" +
                 '</div>';
 
@@ -2415,6 +2455,91 @@ function renderPitchRow(
 }
 
 
+        if (position === "DEF") {
+
+            required = parts[0];
+
+        } else if (position === "MID") {
+
+            required = parts[1];
+
+        } else if (position === "FWD") {
+
+            required = parts[2];
+
+        }
+
+    }
+
+
+    // -----------------------------------------------------
+    // Render players / empty slots
+    // -----------------------------------------------------
+
+    for (
+        let i = 0;
+        i < required;
+        i++
+    ) {
+
+        const player =
+            playersInRow[i];
+
+
+        if (player) {
+
+            const div =
+                document.createElement("div");
+
+            div.className =
+                "pitch-player";
+
+            div.innerHTML =
+
+                '<div class="pitch-player-card">' +
+                    getInitials(player.web_name) +
+                '</div>' +
+
+                '<div class="pitch-player-name">' +
+                    player.web_name +
+                '</div>' +
+
+                '<div class="pitch-player-price">' +
+                    "£" +
+                    Number(
+                        player.now_cost / 10
+                    ).toFixed(1) +
+                    "m" +
+                '</div>';
+
+            container.appendChild(div);
+
+        } else {
+
+            const div =
+                document.createElement("div");
+
+            div.className =
+                "empty-slot";
+
+            div.innerHTML =
+
+                '<div class="empty-slot-card">' +
+                    "+" +
+                '</div>' +
+
+                '<div class="empty-slot-name">' +
+                    "Add " +
+                    position +
+                '</div>';
+
+            container.appendChild(div);
+
+        }
+
+    }
+
+}
 // =========================================================
 // PLAYER INITIALS
 // =========================================================
