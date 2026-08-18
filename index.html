@@ -3219,8 +3219,14 @@ const lockedIds =
 const newSquad =
     [...lockedPlayers];
 
-const newSquad =
-    [...lockedPlayers];
+let totalCost = 0;
+
+newSquad.forEach(
+    player => {
+        totalCost +=
+            Number(player.now_cost);
+    }
+);
 
 
 // -----------------------------------------------------
