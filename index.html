@@ -406,13 +406,17 @@ async function loadFPL() {
     try {
 
         const response =
-            await fetch(WORKER_URL);
+            await fetch(
+                WORKER_URL + "/api/players"
+            );
 
         if (!response.ok) {
+
             throw new Error(
                 "Worker returned HTTP " +
                 response.status
             );
+
         }
 
         const data =
@@ -425,9 +429,11 @@ async function loadFPL() {
             data.teams || [];
 
         if (!players.length) {
+
             throw new Error(
                 "No player data received."
             );
+
         }
 
         status.innerHTML =
@@ -436,6 +442,7 @@ async function loadFPL() {
             " players from the official FPL database.";
 
         renderPlayers();
+
         renderSquad();
 
     } catch (error) {
@@ -444,7 +451,7 @@ async function loadFPL() {
 
         status.innerHTML =
             "⚠️ Could not load live FPL data. " +
-            "Check your Cloudflare Worker URL.";
+            "The FPL data server may be temporarily unavailable.";
 
     }
 
