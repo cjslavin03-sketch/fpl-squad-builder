@@ -2114,7 +2114,9 @@ function renderSquad() {
     pitchGK.innerHTML = "";
     bench.innerHTML = "";
 
+// -----------------------------------------------------
 // Determine formation
+// -----------------------------------------------------
 
 let formation = selectedFormation;
 
@@ -2124,7 +2126,33 @@ if (formation === "AUTO") {
 
 }
 
-    // -----------------------------------------------------
+
+// -----------------------------------------------------
+// Separate squad by position
+// -----------------------------------------------------
+
+const goalkeepers =
+    squad.filter(
+        p => Number(p.element_type) === 1
+    );
+
+const defenders =
+    squad.filter(
+        p => Number(p.element_type) === 2
+    );
+
+const midfielders =
+    squad.filter(
+        p => Number(p.element_type) === 3
+    );
+
+const forwards =
+    squad.filter(
+        p => Number(p.element_type) === 4
+    );
+
+
+// -----------------------------------------------------
 // Determine starting XI from formation
 // -----------------------------------------------------
 
@@ -2141,7 +2169,9 @@ const forwardCount =
     formationParts[2];
 
 
+// -----------------------------------------------------
 // Sort players by projected points
+// -----------------------------------------------------
 
 function sortByProjectedPoints(a, b) {
 
@@ -2181,7 +2211,9 @@ const sortedForwards =
         .sort(sortByProjectedPoints);
 
 
+// -----------------------------------------------------
 // Select starters based on formation
+// -----------------------------------------------------
 
 const startingGK =
     sortedGoalkeepers.slice(0, 1);
@@ -2205,7 +2237,9 @@ const startingFwd =
     );
 
 
+// -----------------------------------------------------
 // IDs of all starting players
+// -----------------------------------------------------
 
 const starterIds =
     new Set([
