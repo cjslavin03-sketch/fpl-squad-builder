@@ -1155,6 +1155,10 @@ function num(value) {
 
 function calculateAnalytics(player) {
 
+    // =====================================================
+    // RAW LIVE FPL DATA
+    // =====================================================
+
     const points =
         num(player.total_points);
 
@@ -1163,6 +1167,9 @@ function calculateAnalytics(player) {
 
     const minutes =
         num(player.minutes);
+
+    const starts =
+        num(player.starts);
 
     const form =
         num(player.form);
@@ -1176,354 +1183,620 @@ function calculateAnalytics(player) {
     const position =
         positions[player.element_type] || "MID";
 
-const status =
-    player.status || "a";
 
-const chanceNextRound =
-    player.chance_of_playing_next_round;
+    // Attacking production
 
-const news =
-    player.news || "";
+    const goals =
+        num(player.goals_scored);
 
-let availabilityScore = 100;
+    const assists =
+        num(player.assists);
 
-if (
-    status === "i" ||
-    status === "s" ||
-    status === "u"
-) {
+    const expectedGoals =
+        num(player.expected_goals);
 
-    availabilityScore = 0;
+    const expectedAssists =
+        num(player.expected_assists);
 
-} else if (
-    chanceNextRound !== null &&
-    chanceNextRound !== undefined
-) {
+    const expectedGI =
+        num(player.expected_goal_involvements);
 
-    availabilityScore =
-        Number(chanceNextRound);
 
-}
+    // FPL attacking indicators
 
-    /* ---------------------------------------------
-       MINUTES SECURITY
-    --------------------------------------------- */
+    const threat =
+        num(player.threat);
 
-    /*
-       Before a meaningful current-season sample exists,
-       minutes are treated cautiously.
+    const creativity =
+        num(player.creativity);
 
-       This prevents preseason/random appearances from
-       becoming an enormous positive signal.
-    */
+    const ict =
+        num(player.ict_index);
 
-    let minutesScore;
 
-    if (minutes <= 0) {
+    // Other FPL production
 
-        minutesScore = 45;
+    const bonus =
+        num(player.bonus);
 
-    } else {
+    const cleanSheets =
+        num(player.clean_sheets);
+
+    const saves =
+        num(player.saves);
+
+
+    // =====================================================
+    // LIVE AVAILABILITY / INJURY
+    // =====================================================
+
+    const status =
+        player.status || "a";
+
+    const chanceNextRound =
+        player.chance_of_playing_next_round;
+
+    const news =
+        player.news || "";
+
+
+    let availabilityScore = 100;
+
+
+    if (
+        status === "i" ||
+        status === "s" ||
+        status === "u"
+    ) {
+
+        availabilityScore = 0;
+
+    } else if (
+        chanceNextRound !== null &&
+        chanceNextRound !== undefined
+    ) {
+
+        availabilityScore =
+            Math.max(
+                0,
+                Math.min(
+                    100,
+                    Number(chanceNextRound)
+                )
+            );
+
+    }
+
+
+    // =====================================================
+    // MINUTES SECURITY
+    //
+    // Measures reliability of actually playing.
+    // It deliberately does NOT use goals, assists,
+    // value or projected points.
+    // =====================================================
+
+    let minutesScore = 50;
+
+
+    if (minutes > 0) {
+
+        const fullMatches =
+            minutes / 90;
+
+
+        const startRate =
+            fullMatches > 0
+                ? Math.min(
+                    1,
+                    starts /
+                    Math.max(
+                        1,
+                        fullMatches
+                    )
+                )
+                : 0;
+
+
+        const sampleScore =
+            Math.min(
+                100,
+                40 +
+                minutes / 20
+            );
+
 
         minutesScore =
-            Math.min(
-                95,
-                40 + (minutes / 1000) * 55
-            );
-
-    }
-// Current injury / availability adjustment
-
-minutesScore =
-    minutesScore *
-    (
-        availabilityScore /
-        100
-    );
-
-    /* ---------------------------------------------
-       PERFORMANCE
-    --------------------------------------------- */
-
-    let ppgScore;
-
-    if (ppg <= 0) {
-
-        ppgScore = 35;
-
-    } else {
-
-        ppgScore =
-            Math.min(
-                95,
-                35 + (ppg / 7) * 60
-            );
+            sampleScore * 0.70 +
+            startRate * 100 * 0.30;
 
     }
 
 
-    /* ---------------------------------------------
-       FORM
-    --------------------------------------------- */
+    // Current availability directly affects
+    // likelihood of getting minutes.
 
-    /*
-       Form gets deliberately LOW influence.
-
-       This is especially important during preseason
-       because raw preseason minutes/form can be noisy.
-    */
-
-    let formScore;
-
-    if (form <= 0) {
-
-        formScore = 50;
-
-    } else {
-
-        formScore =
-            Math.min(
-                95,
-                40 + (form / 8) * 55
-            );
-
-    }
+    minutesScore =
+        minutesScore *
+        (
+            availabilityScore /
+            100
+        );
 
 
-    /* ---------------------------------------------
-       VALUE
-    --------------------------------------------- */
-
-    let valueScore = 50;
-
-    if (price > 0 && points > 0) {
-
-        const pointsPerMillion =
-            points / price;
-
-        valueScore =
-            Math.min(
-                98,
-                40 +
-                pointsPerMillion * 2.5
-            );
-
-    }
-
-
-    /* ---------------------------------------------
-       OWNERSHIP / DIFFERENTIAL
-    --------------------------------------------- */
-
-    /*
-       Ownership is NOT considered a measure of quality.
-
-       Lower ownership simply means more differential
-       potential.
-    */
-
-    const differentialScore =
+    minutesScore =
         Math.max(
-            5,
+            0,
             Math.min(
-                95,
-                95 - ownership
+                100,
+                minutesScore
             )
         );
 
 
-    /* ---------------------------------------------
-       POSITION ADJUSTMENTS
-    --------------------------------------------- */
+    // =====================================================
+    // CONFIDENCE
+    //
+    // Measures how trustworthy our estimate is.
+    // Mostly sample size + availability.
+    // It does NOT reward attacking ability.
+    // =====================================================
 
-    let positionAdjustment = 0;
-
-    if (position === "GK") {
-
-        positionAdjustment = 3;
-
-    } else if (position === "DEF") {
-
-        positionAdjustment = 2;
-
-    } else if (position === "MID") {
-
-        positionAdjustment = 0;
-
-    } else if (position === "FWD") {
-
-        positionAdjustment = 1;
-
-    }
+    let confidence = 45;
 
 
-    /* ---------------------------------------------
-       CONFIDENCE
-    --------------------------------------------- */
-
-    /*
-       Confidence is intentionally separate from ability.
-
-       Someone with limited PL history can have high upside
-       but lower confidence.
-    */
-
-    let confidence = 60;
-
-    if (minutes > 1000) {
-
-        confidence += 15;
-
-    } else if (minutes > 500) {
-
+    if (minutes >= 270) {
         confidence += 8;
-
     }
 
-    if (points > 100) {
-
+    if (minutes >= 600) {
         confidence += 8;
-
     }
 
-    if (ppg > 5) {
+    if (minutes >= 1200) {
+        confidence += 8;
+    }
 
+    if (minutes >= 2000) {
+        confidence += 8;
+    }
+
+    if (starts >= 10) {
         confidence += 5;
-
     }
+
+    if (starts >= 20) {
+        confidence += 5;
+    }
+
+
+    confidence *=
+        (
+            0.50 +
+            (
+                availabilityScore /
+                100
+            ) * 0.50
+        );
+
 
     confidence =
-        Math.min(
-            95,
-            confidence
+        Math.max(
+            5,
+            Math.min(
+                98,
+                confidence
+            )
         );
 
 
-    /* ---------------------------------------------
-       UPSIDE
-    --------------------------------------------- */
+    // =====================================================
+    // ATTACKING / HAUL UPSIDE
+    //
+    // This is intentionally different from minutes.
+    // It rewards actual attacking involvement.
+    // =====================================================
+
+    let attackingScore = 45;
+
+
+    const attackingDataExists =
+        goals > 0 ||
+        assists > 0 ||
+        expectedGI > 0 ||
+        threat > 0 ||
+        creativity > 0 ||
+        ict > 0;
+
+
+    if (attackingDataExists) {
+
+        const goalScore =
+            Math.min(
+                100,
+                goals * 12
+            );
+
+
+        const assistScore =
+            Math.min(
+                100,
+                assists * 10
+            );
+
+
+        const xGScore =
+            Math.min(
+                100,
+                expectedGoals * 18
+            );
+
+
+        const xAScore =
+            Math.min(
+                100,
+                expectedAssists * 18
+            );
+
+
+        const xGIScore =
+            Math.min(
+                100,
+                expectedGI * 12
+            );
+
+
+        const threatScore =
+            Math.min(
+                100,
+                threat / 8
+            );
+
+
+        const creativityScore =
+            Math.min(
+                100,
+                creativity / 8
+            );
+
+
+        attackingScore =
+            goalScore * 0.15 +
+            assistScore * 0.12 +
+            xGScore * 0.18 +
+            xAScore * 0.16 +
+            xGIScore * 0.18 +
+            threatScore * 0.11 +
+            creativityScore * 0.10;
+
+    }
+
+
+    // Position context.
+    // Attackers get slightly more haul potential
+    // from attacking involvement.
+
+    let positionUpsideBonus = 0;
+
+
+    if (position === "MID") {
+        positionUpsideBonus = 5;
+    }
+
+    if (position === "FWD") {
+        positionUpsideBonus = 7;
+    }
+
+    if (position === "DEF") {
+        positionUpsideBonus = 1;
+    }
+
 
     let upside =
-        (
-            valueScore * 0.35 +
-            ppgScore * 0.30 +
-            differentialScore * 0.20 +
-            minutesScore * 0.15
+        attackingScore +
+        positionUpsideBonus;
+
+
+    // Bonus-point ability adds some ceiling.
+
+    upside +=
+        Math.min(
+            8,
+            bonus / 5
         );
 
-    /*
-       Low confidence does NOT mean low upside.
-
-       In fact, a cheap player with uncertain information
-       can have tremendous upside.
-    */
 
     upside =
-        Math.min(
-            98,
-            upside + positionAdjustment
+        Math.max(
+            10,
+            Math.min(
+                98,
+                upside
+            )
         );
 
 
-    /* ---------------------------------------------
-       PROJECTED POINTS
-    --------------------------------------------- */
+    // =====================================================
+    // EXPECTED FPL POINTS
+    //
+    // THIS is the number Best Overall should eventually
+    // care about most.
+    //
+    // Availability/minutes affect expected output here once,
+    // so Best Overall does not need to heavily reward them
+    // again later.
+    // =====================================================
 
-    let projection;
+    const officialExpectedNext =
+        num(player.ep_next);
 
-    if (ppg > 0) {
 
-        projection =
-            ppg * 0.75 +
-            (minutesScore / 100) * 1.2 +
-            (valueScore / 100) * 0.8;
+    let baseProjection;
+
+
+    if (officialExpectedNext > 0) {
+
+        // Use FPL's current expected-points signal
+        // when it is actually populated.
+
+        baseProjection =
+            officialExpectedNext;
+
+    } else if (ppg > 0) {
+
+        // Competitive performance baseline.
+
+        baseProjection =
+            ppg * 0.72 +
+            form * 0.18 +
+            (
+                attackingScore /
+                100
+            ) * 1.20;
 
     } else {
 
-        projection =
-            3.5 +
-            (minutesScore / 100) * 1.0;
+        // Before meaningful current-season data exists,
+        // remain conservative rather than inventing
+        // superstar projections.
+
+        baseProjection =
+            3.0 +
+            (
+                attackingScore /
+                100
+            ) * 1.40;
 
     }
 
 
-    /*
-       Prevent ridiculous projections.
-    */
+    // Defensive FPL production can matter without
+    // turning attacking upside into the same metric.
+
+    let defensiveBonus = 0;
+
+
+    if (position === "GK") {
+
+        defensiveBonus =
+            Math.min(
+                1.2,
+                cleanSheets * 0.05 +
+                saves * 0.01
+            );
+
+    } else if (position === "DEF") {
+
+        defensiveBonus =
+            Math.min(
+                1.0,
+                cleanSheets * 0.06
+            );
+
+    }
+
+
+    baseProjection +=
+        defensiveBonus;
+
+
+    // Playing probability.
+    //
+    // Healthy established starters remain near 1.0.
+    // Doubtful/rotational players are reduced.
+
+    const playingFactor =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                (
+                    minutesScore * 0.65 +
+                    availabilityScore * 0.35
+                ) / 100
+            )
+        );
+
+
+    let projection =
+        baseProjection *
+        (
+            0.55 +
+            playingFactor * 0.45
+        );
+
+
+    // Confirmed unavailable = essentially no
+    // immediate FPL expectation.
+
+    if (availabilityScore === 0) {
+
+        projection = 0;
+
+    }
+
 
     projection =
         Math.max(
-            2.5,
+            0,
             Math.min(
-                10,
+                12,
                 projection
             )
         );
 
 
-    /* ---------------------------------------------
-       OVERALL
-    --------------------------------------------- */
+    // =====================================================
+    // VALUE
+    //
+    // Expected points per £m.
+    // Expensive players must actually justify the price.
+    // =====================================================
 
-    /*
-       The overall score deliberately DOES NOT allow
-       raw total points to dominate.
+    let valueScore = 0;
 
-       This prevents established players from automatically
-       beating every newcomer.
-    */
 
-    const overall =
-        (
-            projection / 10 * 35 +
-            valueScore * 0.20 +
-            minutesScore * 0.20 +
-            upside * 0.15 +
-            confidence * 0.10
+    if (
+        price > 0 &&
+        projection > 0
+    ) {
+
+        const projectedPerMillion =
+            projection /
+            price;
+
+
+        valueScore =
+            projectedPerMillion *
+            100;
+
+    }
+
+
+    valueScore =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                valueScore
+            )
         );
 
 
+    // =====================================================
+    // DIFFERENTIAL
+    //
+    // PURELY ownership-based.
+    //
+    // Quality is handled separately by projection/upside.
+    // =====================================================
+
+    const differentialScore =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                100 - ownership
+            )
+        );
+
+
+    // =====================================================
+    // DISPLAY OVERALL RATING
+    //
+    // This is a general player rating.
+    // It is NOT automatically the Best Overall optimizer
+    // objective.
+    // =====================================================
+
+    const projectionScore =
+        Math.min(
+            100,
+            (
+                projection /
+                8
+            ) * 100
+        );
+
+
+    let overall =
+        projectionScore * 0.45 +
+        valueScore * 0.15 +
+        minutesScore * 0.15 +
+        upside * 0.15 +
+        confidence * 0.10;
+
+
+    overall =
+        Math.max(
+            0,
+            Math.min(
+                99,
+                overall
+            )
+        );
+
+
+    // =====================================================
+    // RETURN
+    // =====================================================
+
     return {
-availabilityScore:
-    Number(
-        availabilityScore.toFixed(1)
-    ),
 
-status:
-    status,
-
-news:
-    news,
         projection:
-            Number(projection.toFixed(1)),
+            Number(
+                projection.toFixed(1)
+            ),
 
         valueScore:
-            Number(valueScore.toFixed(1)),
+            Number(
+                valueScore.toFixed(1)
+            ),
 
         minutesScore:
-            Number(minutesScore.toFixed(1)),
+            Number(
+                minutesScore.toFixed(1)
+            ),
 
         confidence:
-            Number(confidence.toFixed(1)),
+            Number(
+                confidence.toFixed(1)
+            ),
 
         upside:
-            Number(upside.toFixed(1)),
+            Number(
+                upside.toFixed(1)
+            ),
 
         differentialScore:
-            Number(differentialScore.toFixed(1)),
+            Number(
+                differentialScore.toFixed(1)
+            ),
+
+        availabilityScore:
+            Number(
+                availabilityScore.toFixed(1)
+            ),
+
+        attackingScore:
+            Number(
+                attackingScore.toFixed(1)
+            ),
 
         overall:
             Number(
-                Math.min(
-                    99,
-                    overall
-                ).toFixed(1)
-            )
+                overall.toFixed(1)
+            ),
+
+        status:
+            status,
+
+        news:
+            news
 
     };
 
 }
-
 
 /* =========================================================
    RENDER PLAYERS
