@@ -233,3 +233,4 @@ jobs:
 
 # Trigger optimizer replacement from the connected GitHub workflow.
 # Persistence is handled by the existing squad state in the app.
+# Forced rerun: 2026-08-18
