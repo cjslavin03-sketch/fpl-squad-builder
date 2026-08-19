@@ -639,6 +639,36 @@ button {
     </select>
 
 </div>
+        <div class="captain-control">
+
+    <div>
+        <strong>Captain</strong>
+        <div id="captain-suggestion">
+            Suggested: —
+        </div>
+
+        <select id="captain-select">
+            <option value="AUTO">
+                Auto Suggested
+            </option>
+        </select>
+    </div>
+
+
+    <div>
+        <strong>Vice Captain</strong>
+        <div id="vice-captain-suggestion">
+            Suggested: —
+        </div>
+
+        <select id="vice-captain-select">
+            <option value="AUTO">
+                Auto Suggested
+            </option>
+        </select>
+    </div>
+
+</div>
 <div class="formation-control">
 
     <label for="formation-select">
@@ -2151,6 +2181,386 @@ function calculateGameweekRating(
     );
 
 }
+    // =========================================================
+// CAPTAIN + VICE CAPTAIN
+// =========================================================
+
+
+// Manual selections are stored separately for every GW.
+
+const manualCaptainByGameweek = {};
+
+const manualViceCaptainByGameweek = {};
+
+
+// ---------------------------------------------------------
+// Update captain controls from the current starting XI
+// ---------------------------------------------------------
+
+function updateCaptainControls(
+    startingXI
+) {
+
+    const captainSelect =
+        document.getElementById(
+            "captain-select"
+        );
+
+    const viceSelect =
+        document.getElementById(
+            "vice-captain-select"
+        );
+
+    const captainSuggestion =
+        document.getElementById(
+            "captain-suggestion"
+        );
+
+    const viceSuggestion =
+        document.getElementById(
+            "vice-captain-suggestion"
+        );
+
+
+    if (
+        !captainSelect ||
+        !viceSelect
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        !startingXI ||
+        !startingXI.length
+    ) {
+
+        return;
+
+    }
+
+
+    // Rank the current starting XI
+    // by selected-GW projected points.
+
+    const ranked =
+        [...startingXI]
+            .sort(
+                (a, b) =>
+                    calculateGameweekProjection(
+                        b,
+                        selectedGameweek
+                    ) -
+                    calculateGameweekProjection(
+                        a,
+                        selectedGameweek
+                    )
+            );
+
+
+    const suggestedCaptain =
+        ranked[0];
+
+    const suggestedVice =
+        ranked[1] || ranked[0];
+
+
+    // -----------------------------------------------------
+    // Suggested labels
+    // -----------------------------------------------------
+
+    if (
+        captainSuggestion &&
+        suggestedCaptain
+    ) {
+
+        captainSuggestion.textContent =
+            "Suggested: " +
+            suggestedCaptain.web_name +
+            " (" +
+            calculateGameweekProjection(
+                suggestedCaptain,
+                selectedGameweek
+            ).toFixed(1) +
+            " pts)";
+
+    }
+
+
+    if (
+        viceSuggestion &&
+        suggestedVice
+    ) {
+
+        viceSuggestion.textContent =
+            "Suggested: " +
+            suggestedVice.web_name +
+            " (" +
+            calculateGameweekProjection(
+                suggestedVice,
+                selectedGameweek
+            ).toFixed(1) +
+            " pts)";
+
+    }
+
+
+    // -----------------------------------------------------
+    // Preserve manual choices for this specific GW
+    // -----------------------------------------------------
+
+    const savedCaptain =
+        manualCaptainByGameweek[
+            selectedGameweek
+        ] || "AUTO";
+
+
+    const savedVice =
+        manualViceCaptainByGameweek[
+            selectedGameweek
+        ] || "AUTO";
+
+
+    // -----------------------------------------------------
+    // Build dropdown options
+    // -----------------------------------------------------
+
+    captainSelect.innerHTML =
+        '<option value="AUTO">' +
+        'Auto Suggested — ' +
+        suggestedCaptain.web_name +
+        '</option>';
+
+
+    viceSelect.innerHTML =
+        '<option value="AUTO">' +
+        'Auto Suggested — ' +
+        suggestedVice.web_name +
+        '</option>';
+
+
+    ranked.forEach(
+        player => {
+
+            const captainOption =
+                document.createElement(
+                    "option"
+                );
+
+            captainOption.value =
+                String(player.id);
+
+            captainOption.textContent =
+                player.web_name +
+                " — " +
+                calculateGameweekProjection(
+                    player,
+                    selectedGameweek
+                ).toFixed(1) +
+                " pts";
+
+
+            captainSelect.appendChild(
+                captainOption
+            );
+
+
+            const viceOption =
+                document.createElement(
+                    "option"
+                );
+
+            viceOption.value =
+                String(player.id);
+
+            viceOption.textContent =
+                player.web_name +
+                " — " +
+                calculateGameweekProjection(
+                    player,
+                    selectedGameweek
+                ).toFixed(1) +
+                " pts";
+
+
+            viceSelect.appendChild(
+                viceOption
+            );
+
+        }
+    );
+
+
+    // -----------------------------------------------------
+    // Restore selections if they are still in the XI
+    // -----------------------------------------------------
+
+    const startingIds =
+        new Set(
+            startingXI.map(
+                player =>
+                    Number(player.id)
+            )
+        );
+
+
+    if (
+        savedCaptain !== "AUTO" &&
+        startingIds.has(
+            Number(savedCaptain)
+        )
+    ) {
+
+        captainSelect.value =
+            savedCaptain;
+
+    } else {
+
+        captainSelect.value =
+            "AUTO";
+
+        delete manualCaptainByGameweek[
+            selectedGameweek
+        ];
+
+    }
+
+
+    if (
+        savedVice !== "AUTO" &&
+        startingIds.has(
+            Number(savedVice)
+        )
+    ) {
+
+        viceSelect.value =
+            savedVice;
+
+    } else {
+
+        viceSelect.value =
+            "AUTO";
+
+        delete manualViceCaptainByGameweek[
+            selectedGameweek
+        ];
+
+    }
+
+}
+
+
+// ---------------------------------------------------------
+// Current actual captain
+// ---------------------------------------------------------
+
+function getCurrentCaptain(
+    startingXI
+) {
+
+    const manualId =
+        manualCaptainByGameweek[
+            selectedGameweek
+        ];
+
+
+    if (manualId) {
+
+        const manualPlayer =
+            startingXI.find(
+                player =>
+                    Number(player.id) ===
+                    Number(manualId)
+            );
+
+
+        if (manualPlayer) {
+
+            return manualPlayer;
+
+        }
+
+    }
+
+
+    return [...startingXI]
+        .sort(
+            (a, b) =>
+                calculateGameweekProjection(
+                    b,
+                    selectedGameweek
+                ) -
+                calculateGameweekProjection(
+                    a,
+                    selectedGameweek
+                )
+        )[0];
+
+}
+
+
+// ---------------------------------------------------------
+// Current actual vice captain
+// ---------------------------------------------------------
+
+function getCurrentViceCaptain(
+    startingXI
+) {
+
+    const captain =
+        getCurrentCaptain(
+            startingXI
+        );
+
+
+    const manualId =
+        manualViceCaptainByGameweek[
+            selectedGameweek
+        ];
+
+
+    if (manualId) {
+
+        const manualPlayer =
+            startingXI.find(
+                player =>
+                    Number(player.id) ===
+                    Number(manualId) &&
+                    Number(player.id) !==
+                    Number(captain?.id)
+            );
+
+
+        if (manualPlayer) {
+
+            return manualPlayer;
+
+        }
+
+    }
+
+
+    return [...startingXI]
+        .filter(
+            player =>
+                Number(player.id) !==
+                Number(captain?.id)
+        )
+        .sort(
+            (a, b) =>
+                calculateGameweekProjection(
+                    b,
+                    selectedGameweek
+                ) -
+                calculateGameweekProjection(
+                    a,
+                    selectedGameweek
+                )
+        )[0];
+
+}
 /* =========================================================
    RENDER PLAYERS
 ========================================================= */
@@ -3199,7 +3609,9 @@ const startingXI = [
     ...startingFwd
 
 ];
-
+updateCaptainControls(
+    startingXI
+);
 
 const projectedElement =
     document.getElementById(
@@ -4885,7 +5297,87 @@ function buildOptimizedSquad(strategy) {
 // =========================================================
 // FORMATION SELECTOR
 // =========================================================
-const gameweekSelect =
+const captainSelect =
+    document.getElementById(
+        "captain-select"
+    );
+
+
+const viceCaptainSelect =
+    document.getElementById(
+        "vice-captain-select"
+    );
+
+
+if (captainSelect) {
+
+    captainSelect.addEventListener(
+        "change",
+        () => {
+
+            if (
+                captainSelect.value ===
+                "AUTO"
+            ) {
+
+                delete manualCaptainByGameweek[
+                    selectedGameweek
+                ];
+
+            } else {
+
+                manualCaptainByGameweek[
+                    selectedGameweek
+                ] =
+                    Number(
+                        captainSelect.value
+                    );
+
+            }
+
+
+            renderSquad();
+
+        }
+    );
+
+}
+
+
+if (viceCaptainSelect) {
+
+    viceCaptainSelect.addEventListener(
+        "change",
+        () => {
+
+            if (
+                viceCaptainSelect.value ===
+                "AUTO"
+            ) {
+
+                delete manualViceCaptainByGameweek[
+                    selectedGameweek
+                ];
+
+            } else {
+
+                manualViceCaptainByGameweek[
+                    selectedGameweek
+                ] =
+                    Number(
+                        viceCaptainSelect.value
+                    );
+
+            }
+
+
+            renderSquad();
+
+        }
+    );
+
+}
+    const gameweekSelect =
     document.getElementById(
         "gameweek-select"
     );
