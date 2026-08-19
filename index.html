@@ -3282,13 +3282,27 @@ function buildOptimizedSquad(strategy) {
         );
 
 
-    const candidates =
-        scoredPlayers.filter(
-            item =>
-                !lockedIds.has(
-                    Number(item.player.id)
-                )
-        );
+    const candidates = [];
+
+const seenCandidateIds = new Set();
+
+scoredPlayers.forEach(item => {
+
+    const id =
+        Number(item.player.id);
+
+    if (
+        lockedIds.has(id) ||
+        seenCandidateIds.has(id)
+    ) {
+        return;
+    }
+
+    seenCandidateIds.add(id);
+
+    candidates.push(item);
+
+});
 
 
     // -----------------------------------------------------
