@@ -3403,83 +3403,30 @@ if (clearSquadButton) {
 function buildOptimizedSquad(strategy) {
 
     if (!players || !players.length) {
-        alert("FPL player data has not loaded yet.");
+
+        alert(
+            "FPL player data has not loaded yet."
+        );
+
         return;
+
     }
 
 
     // =====================================================
-    // STRATEGY WEIGHTS
+    // LEGAL FPL SQUAD REQUIREMENTS
     // =====================================================
 
-    const weights = {
-
-        overall: {
-            projected: 0.40,
-            value: 0.15,
-            minutes: 0.20,
-            upside: 0.15,
-            confidence: 0.10
-        },
-
-        safe: {
-            projected: 0.25,
-            value: 0.10,
-            minutes: 0.40,
-            upside: 0.05,
-            confidence: 0.20
-        },
-
-        moneyball: {
-            projected: 0.25,
-            value: 0.45,
-            minutes: 0.15,
-            upside: 0.10,
-            confidence: 0.05
-        },
-
-        attack: {
-            projected: 0.30,
-            value: 0.05,
-            minutes: 0.10,
-            upside: 0.45,
-            confidence: 0.10
-        },
-
-        balanced: {
-            projected: 0.30,
-            value: 0.25,
-            minutes: 0.25,
-            upside: 0.10,
-            confidence: 0.10
-        },
-
-        differential: {
-            projected: 0.25,
-            value: 0.15,
-            minutes: 0.10,
-            upside: 0.30,
-            confidence: 0.10
-        },
-
-        upside: {
-            projected: 0.25,
-            value: 0.10,
-            minutes: 0.10,
-            upside: 0.45,
-            confidence: 0.10
-        }
-
+    const requirements = {
+        1: 2,   // GK
+        2: 5,   // DEF
+        3: 5,   // MID
+        4: 3    // FWD
     };
 
 
-    const selectedWeights =
-        weights[strategy] ||
-        weights.overall;
-
-
     // =====================================================
-    // LOCKED PLAYERS ONLY
+    // PRESERVE ONLY EXPLICITLY LOCKED PLAYERS
     // =====================================================
 
     const lockedPlayers =
@@ -3500,19 +3447,7 @@ function buildOptimizedSquad(strategy) {
         );
 
 
-    // =====================================================
-    // REQUIREMENTS
-    // =====================================================
-
-    const requirements = {
-        1: 2,
-        2: 5,
-        3: 5,
-        4: 3
-    };
-
-
-    const counts = {
+    const lockedCounts = {
         1: 0,
         2: 0,
         3: 0,
@@ -3520,10 +3455,10 @@ function buildOptimizedSquad(strategy) {
     };
 
 
-    const clubCounts = {};
+    const lockedClubCounts = {};
 
 
-    let totalCost = 0;
+    let lockedCost = 0;
 
 
     lockedPlayers.forEach(player => {
@@ -3534,13 +3469,19 @@ function buildOptimizedSquad(strategy) {
         const club =
             Number(player.team);
 
-        counts[position]++;
+        lockedCounts[position]++;
 
-        clubCounts[club] =
-            (clubCounts[club] || 0) + 1;
+        lockedClubCounts[club] =
+            (
+                lockedClubCounts[club] ||
+                0
+            ) + 1;
 
-        totalCost +=
-            Number(player.now_cost || 0);
+        lockedCost +=
+            Number(
+                player.now_cost ||
+                0
+            );
 
     });
 
@@ -3549,15 +3490,18 @@ function buildOptimizedSquad(strategy) {
     // VALIDATE LOCKED PLAYERS
     // =====================================================
 
-    for (const position of [1, 2, 3, 4]) {
+    for (
+        const position of
+        [1, 2, 3, 4]
+    ) {
 
         if (
-            counts[position] >
+            lockedCounts[position] >
             requirements[position]
         ) {
 
             alert(
-                "You have too many locked players at one position."
+                "Your locked players exceed the allowed number at one position."
             );
 
             return;
@@ -3568,14 +3512,31 @@ function buildOptimizedSquad(strategy) {
 
 
     if (
-        totalCost > 1000 ||
-        Object.values(clubCounts).some(
-            count => count > 3
-        )
+        lockedCost > 1000
     ) {
 
         alert(
-            "Your locked players make a legal £100m squad impossible."
+            "Your locked players already exceed the £100m budget."
+        );
+
+        return;
+
+    }
+
+
+    if (
+        Object
+            .values(
+                lockedClubCounts
+            )
+            .some(
+                count =>
+                    count > 3
+            )
+    ) {
+
+        alert(
+            "Your locked players exceed the three-player-per-club limit."
         );
 
         return;
@@ -3584,161 +3545,316 @@ function buildOptimizedSquad(strategy) {
 
 
     // =====================================================
-    // SCORE UNIQUE PLAYERS
+    // STRATEGY SCORE
+    //
+    // Every strategy now has a genuinely different goal.
     // =====================================================
 
-    const seenIds =
-        new Set();
+    function strategyScore(player) {
 
-    const candidates =
-        [];
-
-
-    players.forEach(player => {
-// Do not auto-select confirmed unavailable players
-
-if (
-    player.status === "i" ||
-    player.status === "s" ||
-    player.status === "u" ||
-    (
-        player.chance_of_playing_next_round !== null &&
-        player.chance_of_playing_next_round !== undefined &&
-        Number(
-            player.chance_of_playing_next_round
-        ) === 0
-    )
-) {
-
-    return;
-
-}
-        const id =
-            Number(player.id);
-
-        if (
-            seenIds.has(id) ||
-            lockedIds.has(id)
-        ) {
-            return;
-        }
-
-        seenIds.add(id);
+        const a =
+            calculateAnalytics(player);
 
 
-        const analytics =
-            calculateAnalytics(player) || {};
-
-
-        const projected =
+        const projection =
             Number(
-                analytics.projection ??
-                analytics.projectedPoints ??
-                player.total_points ??
+                a.projection ||
                 0
+            );
+
+
+        const projectionScore =
+            Math.min(
+                100,
+                (
+                    projection /
+                    8
+                ) * 100
             );
 
 
         const value =
             Number(
-                analytics.valueScore ??
-                analytics.value ??
+                a.valueScore ||
                 0
             );
 
 
         const minutes =
             Number(
-                analytics.minutesScore ??
-                analytics.minutesSecurity ??
-                analytics.minutes ??
-                50
-            );
-
-
-        const upside =
-            Number(
-                analytics.upside ??
-                50
+                a.minutesScore ||
+                0
             );
 
 
         const confidence =
             Number(
-                analytics.confidence ??
-                50
+                a.confidence ||
+                0
             );
 
 
-        const ownership =
+        const upside =
             Number(
-                player.selected_by_percent ??
-                50
+                a.upside ||
+                0
             );
+
+
+        const attacking =
+            Number(
+                a.attackingScore ||
+                0
+            );
+
+
+        const differential =
+            Number(
+                a.differentialScore ||
+                0
+            );
+
+
+        // ---------------------------------------------
+        // BEST OVERALL
+        //
+        // Expected FPL points above everything else.
+        // Reliability is already baked into projection,
+        // so we deliberately do not double-count it.
+        // ---------------------------------------------
+
+        if (
+            strategy === "overall"
+        ) {
+
+            return (
+                projectionScore * 0.90 +
+                value * 0.10
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // SAFE & RELIABLE
+        //
+        // Sacrifice some ceiling for certainty.
+        // ---------------------------------------------
+
+        if (
+            strategy === "safe"
+        ) {
+
+            return (
+                projectionScore * 0.40 +
+                minutes * 0.32 +
+                confidence * 0.23 +
+                value * 0.05
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // MONEYBALL
+        //
+        // Expected production for the price.
+        // ---------------------------------------------
+
+        if (
+            strategy === "moneyball"
+        ) {
+
+            return (
+                value * 0.55 +
+                projectionScore * 0.30 +
+                minutes * 0.10 +
+                confidence * 0.05
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // ATTACK HEAVY
+        //
+        // Actual attacking involvement + projection.
+        // ---------------------------------------------
+
+        if (
+            strategy === "attack"
+        ) {
+
+            return (
+                attacking * 0.45 +
+                upside * 0.25 +
+                projectionScore * 0.25 +
+                value * 0.05
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // BALANCED
+        // ---------------------------------------------
+
+        if (
+            strategy === "balanced"
+        ) {
+
+            return (
+                projectionScore * 0.35 +
+                value * 0.20 +
+                minutes * 0.18 +
+                upside * 0.12 +
+                confidence * 0.15
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // DIFFERENTIAL
+        //
+        // Low ownership alone is NOT enough.
+        // Player must still project well.
+        // ---------------------------------------------
+
+        if (
+            strategy === "differential"
+        ) {
+
+            return (
+                projectionScore * 0.35 +
+                differential * 0.30 +
+                upside * 0.15 +
+                value * 0.10 +
+                confidence * 0.10
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // HIGH UPSIDE
+        //
+        // Maximum ceiling even with more uncertainty.
+        // ---------------------------------------------
+
+        if (
+            strategy === "upside"
+        ) {
+
+            return (
+                upside * 0.45 +
+                attacking * 0.25 +
+                projectionScore * 0.22 +
+                differential * 0.08
+            );
+
+        }
+
+
+        return (
+            projectionScore * 0.90 +
+            value * 0.10
+        );
+
+    }
+
+
+    // =====================================================
+    // CREATE UNIQUE CANDIDATE POOL
+    // =====================================================
+
+    const seenIds =
+        new Set();
+
+
+    const candidates =
+        [];
+
+
+    players.forEach(player => {
+
+        const id =
+            Number(player.id);
+
+
+        if (
+            seenIds.has(id) ||
+            lockedIds.has(id)
+        ) {
+
+            return;
+
+        }
+
+
+        seenIds.add(id);
 
 
         const position =
-            Number(player.element_type);
+            Number(
+                player.element_type
+            );
 
 
-        let attackBonus = 0;
+        if (
+            !requirements[position]
+        ) {
 
-        if (strategy === "attack") {
-
-            if (position === 3) {
-                attackBonus = 10;
-            }
-
-            if (position === 4) {
-                attackBonus = 16;
-            }
+            return;
 
         }
 
 
-        let differentialBonus = 0;
+        // ---------------------------------------------
+        // EXCLUDE CONFIRMED UNAVAILABLE PLAYERS
+        // ---------------------------------------------
 
-        if (strategy === "differential") {
+        const chance =
+            player
+                .chance_of_playing_next_round;
 
-            differentialBonus =
-                Math.max(
-                    0,
-                    100 - ownership
-                ) * 0.18;
+
+        if (
+            player.status === "i" ||
+            player.status === "s" ||
+            player.status === "u" ||
+            (
+                chance !== null &&
+                chance !== undefined &&
+                Number(chance) === 0
+            )
+        ) {
+
+            return;
 
         }
-
-
-        const score =
-
-            projected *
-                selectedWeights.projected +
-
-            value *
-                selectedWeights.value +
-
-            minutes *
-                selectedWeights.minutes +
-
-            upside *
-                selectedWeights.upside +
-
-            confidence *
-                selectedWeights.confidence +
-
-            attackBonus +
-
-            differentialBonus;
 
 
         candidates.push({
 
             player,
-            score,
+
+            score:
+                strategyScore(
+                    player
+                ),
+
             price:
                 Number(
                     player.now_cost ||
                     0
+                ),
+
+            position,
+
+            club:
+                Number(
+                    player.team
                 )
 
         });
@@ -3747,71 +3863,181 @@ if (
 
 
     // =====================================================
-    // HELPERS
+    // CANDIDATES BY POSITION
     // =====================================================
 
-    const newSquad =
-        [...lockedPlayers];
+    const byPosition = {
+        1: [],
+        2: [],
+        3: [],
+        4: []
+    };
 
 
-    function isAlreadySelected(playerId) {
+    candidates.forEach(
+        candidate => {
 
-        return newSquad.some(
-            player =>
-                Number(player.id) ===
-                Number(playerId)
-        );
+            byPosition[
+                candidate.position
+            ].push(
+                candidate
+            );
 
-    }
-
-
-    function currentClubCount(teamId) {
-
-        return clubCounts[
-            Number(teamId)
-        ] || 0;
-
-    }
+        }
+    );
 
 
-    function getRemainingRequirements() {
+    // Keep the best strategy players
+    // PLUS cheapest players for budget flexibility.
 
-        return {
-
-            1:
-                requirements[1] -
-                counts[1],
-
-            2:
-                requirements[2] -
-                counts[2],
-
-            3:
-                requirements[3] -
-                counts[3],
-
-            4:
-                requirements[4] -
-                counts[4]
-
-        };
-
-    }
-
-
-    // =====================================================
-    // CALCULATE MINIMUM COST REQUIRED TO FINISH
-    // =====================================================
-
-    function minimumRemainingCost(
-        excludedPlayerId = null
+    for (
+        const position of
+        [1, 2, 3, 4]
     ) {
 
-        const remaining =
-            getRemainingRequirements();
+        const best =
+            [...byPosition[position]]
+                .sort(
+                    (a, b) =>
+                        b.score -
+                        a.score
+                )
+                .slice(
+                    0,
+                    45
+                );
 
 
-        let minimumCost = 0;
+        const cheapest =
+            [...byPosition[position]]
+                .sort(
+                    (a, b) =>
+                        a.price -
+                        b.price
+                )
+                .slice(
+                    0,
+                    15
+                );
+
+
+        const merged = [];
+
+        const mergedIds =
+            new Set();
+
+
+        [
+            ...best,
+            ...cheapest
+        ].forEach(
+            candidate => {
+
+                const id =
+                    Number(
+                        candidate
+                            .player
+                            .id
+                    );
+
+
+                if (
+                    mergedIds.has(id)
+                ) {
+
+                    return;
+
+                }
+
+
+                mergedIds.add(id);
+
+                merged.push(
+                    candidate
+                );
+
+            }
+        );
+
+
+        byPosition[position] =
+            merged;
+
+    }
+
+
+    // =====================================================
+    // BUILD REMAINING POSITION SLOTS
+    // =====================================================
+
+    const slots =
+        [];
+
+
+    for (
+        const position of
+        [1, 2, 3, 4]
+    ) {
+
+        const missing =
+            requirements[position] -
+            lockedCounts[position];
+
+
+        for (
+            let i = 0;
+            i < missing;
+            i++
+        ) {
+
+            slots.push(
+                position
+            );
+
+        }
+
+    }
+
+
+    // Fill positions with fewer candidate choices first.
+    // This reduces dead ends.
+
+    slots.sort(
+        (a, b) =>
+            byPosition[a].length -
+            byPosition[b].length
+    );
+
+
+    // =====================================================
+    // MINIMUM REMAINING PRICE HELPER
+    // =====================================================
+
+    function minimumCostForRemainingSlots(
+        remainingSlots,
+        selectedIds
+    ) {
+
+        let total = 0;
+
+
+        const remainingCounts = {
+            1: 0,
+            2: 0,
+            3: 0,
+            4: 0
+        };
+
+
+        remainingSlots.forEach(
+            position => {
+
+                remainingCounts[
+                    position
+                ]++;
+
+            }
+        );
 
 
         for (
@@ -3820,63 +4046,32 @@ if (
         ) {
 
             const needed =
-                remaining[position];
+                remainingCounts[
+                    position
+                ];
 
 
-            if (needed <= 0) {
+            if (
+                needed <= 0
+            ) {
+
                 continue;
+
             }
 
 
-            const legalPlayers =
-                candidates
-                    .filter(candidate => {
-
-                        const player =
-                            candidate.player;
-
-                        const id =
-                            Number(player.id);
-
-                        const club =
-                            Number(player.team);
-
-
-                        if (
-                            id ===
-                            Number(excludedPlayerId)
-                        ) {
-                            return false;
-                        }
-
-
-                        if (
-                            isAlreadySelected(id)
-                        ) {
-                            return false;
-                        }
-
-
-                        if (
-                            Number(
-                                player.element_type
-                            ) !== position
-                        ) {
-                            return false;
-                        }
-
-
-                        if (
-                            currentClubCount(club) >=
-                            3
-                        ) {
-                            return false;
-                        }
-
-
-                        return true;
-
-                    })
+            const available =
+                byPosition[position]
+                    .filter(
+                        candidate =>
+                            !selectedIds.has(
+                                Number(
+                                    candidate
+                                        .player
+                                        .id
+                                )
+                            )
+                    )
                     .sort(
                         (a, b) =>
                             a.price -
@@ -3885,7 +4080,7 @@ if (
 
 
             if (
-                legalPlayers.length <
+                available.length <
                 needed
             ) {
 
@@ -3894,162 +4089,227 @@ if (
             }
 
 
-            minimumCost +=
-                legalPlayers
-                    .slice(
-                        0,
-                        needed
-                    )
-                    .reduce(
-                        (sum, candidate) =>
-                            sum +
-                            candidate.price,
-                        0
-                    );
+            for (
+                let i = 0;
+                i < needed;
+                i++
+            ) {
+
+                total +=
+                    available[i]
+                        .price;
+
+            }
 
         }
 
 
-        return minimumCost;
+        return total;
 
     }
 
 
     // =====================================================
-    // BUILD SQUAD WHILE RESERVING FUTURE BUDGET
+    // BEAM SEARCH
+    //
+    // Unlike our old greedy builder, this keeps hundreds
+    // of possible squads alive at once instead of making
+    // one irreversible choice at a time.
     // =====================================================
 
-    while (
-        newSquad.length < 15
+    const initialState = {
+
+        squad:
+            [...lockedPlayers],
+
+        selectedIds:
+            new Set(
+                lockedIds
+            ),
+
+        clubCounts:
+            {
+                ...lockedClubCounts
+            },
+
+        cost:
+            lockedCost,
+
+        score:
+            lockedPlayers.reduce(
+                (sum, player) =>
+                    sum +
+                    strategyScore(
+                        player
+                    ),
+                0
+            )
+
+    };
+
+
+    let states =
+        [
+            initialState
+        ];
+
+
+    const BEAM_WIDTH =
+        300;
+
+
+    for (
+        let slotIndex = 0;
+        slotIndex < slots.length;
+        slotIndex++
     ) {
 
-        let bestCandidate =
-            null;
+        const position =
+            slots[
+                slotIndex
+            ];
 
-        let bestScore =
-            -Infinity;
+
+        const remainingSlots =
+            slots.slice(
+                slotIndex + 1
+            );
+
+
+        const nextStates =
+            [];
 
 
         for (
-            const candidate
-            of candidates
+            const state of
+            states
         ) {
 
-            const player =
-                candidate.player;
+            for (
+                const candidate of
+                byPosition[position]
+            ) {
+
+                const player =
+                    candidate.player;
 
 
-            const id =
-                Number(player.id);
+                const id =
+                    Number(
+                        player.id
+                    );
 
 
-            const position =
-                Number(
-                    player.element_type
+                const club =
+                    candidate.club;
+
+
+                if (
+                    state
+                        .selectedIds
+                        .has(id)
+                ) {
+
+                    continue;
+
+                }
+
+
+                if (
+                    (
+                        state
+                            .clubCounts[
+                                club
+                            ] ||
+                        0
+                    ) >= 3
+                ) {
+
+                    continue;
+
+                }
+
+
+                const newCost =
+                    state.cost +
+                    candidate.price;
+
+
+                if (
+                    newCost >
+                    1000
+                ) {
+
+                    continue;
+
+                }
+
+
+                const newSelectedIds =
+                    new Set(
+                        state.selectedIds
+                    );
+
+
+                newSelectedIds.add(
+                    id
                 );
 
 
-            const club =
-                Number(
-                    player.team
-                );
+                const minimumRemaining =
+                    minimumCostForRemainingSlots(
+                        remainingSlots,
+                        newSelectedIds
+                    );
 
 
-            const price =
-                candidate.price;
+                if (
+                    newCost +
+                    minimumRemaining >
+                    1000
+                ) {
+
+                    continue;
+
+                }
 
 
-            if (
-                isAlreadySelected(id)
-            ) {
-                continue;
-            }
+                const newClubCounts =
+                    {
+                        ...state.clubCounts
+                    };
 
 
-            if (
-                counts[position] >=
-                requirements[position]
-            ) {
-                continue;
-            }
+                newClubCounts[club] =
+                    (
+                        newClubCounts[
+                            club
+                        ] ||
+                        0
+                    ) + 1;
 
 
-            if (
-                currentClubCount(club) >=
-                3
-            ) {
-                continue;
-            }
+                nextStates.push({
 
+                    squad: [
+                        ...state.squad,
+                        player
+                    ],
 
-            if (
-                totalCost +
-                price >
-                1000
-            ) {
-                continue;
-            }
+                    selectedIds:
+                        newSelectedIds,
 
+                    clubCounts:
+                        newClubCounts,
 
-            // Temporarily add this player
-            // so we can calculate the minimum
-            // money needed for the remaining slots.
+                    cost:
+                        newCost,
 
-            newSquad.push(player);
+                    score:
+                        state.score +
+                        candidate.score
 
-            counts[position]++;
-
-            clubCounts[club] =
-                currentClubCount(club) + 1;
-
-
-            const minimumNeeded =
-                minimumRemainingCost();
-
-
-            // Undo temporary addition.
-
-            newSquad.pop();
-
-            counts[position]--;
-
-            clubCounts[club]--;
-
-            if (
-                clubCounts[club] === 0
-            ) {
-                delete clubCounts[club];
-            }
-
-
-            const moneyAfterPick =
-                1000 -
-                (
-                    totalCost +
-                    price
-                );
-
-
-            if (
-                minimumNeeded >
-                moneyAfterPick
-            ) {
-
-                continue;
-
-            }
-
-
-            if (
-                candidate.score >
-                bestScore
-            ) {
-
-                bestScore =
-                    candidate.score;
-
-                bestCandidate =
-                    candidate;
+                });
 
             }
 
@@ -4057,7 +4317,7 @@ if (
 
 
         if (
-            !bestCandidate
+            !nextStates.length
         ) {
 
             alert(
@@ -4069,106 +4329,83 @@ if (
         }
 
 
-        const player =
-            bestCandidate.player;
+        // Keep only the strongest partial squads.
 
-
-        const position =
-            Number(
-                player.element_type
-            );
-
-
-        const club =
-            Number(
-                player.team
-            );
-
-
-        const price =
-            bestCandidate.price;
-
-
-        newSquad.push(
-            player
+        nextStates.sort(
+            (a, b) =>
+                b.score -
+                a.score
         );
 
 
-        counts[position]++;
-
-
-        clubCounts[club] =
-            currentClubCount(club) + 1;
-
-
-        totalCost +=
-            price;
+        states =
+            nextStates.slice(
+                0,
+                BEAM_WIDTH
+            );
 
     }
 
 
     // =====================================================
-    // FINAL VALIDATION
+    // CHOOSE BEST FINISHED SQUAD
     // =====================================================
 
-    const uniqueIds =
+    const completedStates =
+        states.filter(
+            state =>
+                state.squad.length ===
+                15 &&
+                state.cost <=
+                1000
+        );
+
+
+    if (
+        !completedStates.length
+    ) {
+
+        alert(
+            "I couldn't build a complete legal squad with the current locked players and £100m budget."
+        );
+
+        return;
+
+    }
+
+
+    completedStates.sort(
+        (a, b) =>
+            b.score -
+            a.score
+    );
+
+
+    const winner =
+        completedStates[0];
+
+
+    // =====================================================
+    // FINAL DUPLICATE CHECK
+    // =====================================================
+
+    const finalIds =
         new Set(
-            newSquad.map(
+            winner.squad.map(
                 player =>
-                    Number(player.id)
+                    Number(
+                        player.id
+                    )
             )
         );
 
 
     if (
-        uniqueIds.size !== 15
+        finalIds.size !== 15
     ) {
 
         alert(
-            "The optimizer accidentally selected a duplicate player."
-        );
-
-        return;
-
-    }
-
-
-    for (
-        const position of
-        [1, 2, 3, 4]
-    ) {
-
-        const positionCount =
-            newSquad.filter(
-                player =>
-                    Number(
-                        player.element_type
-                    ) === position
-            ).length;
-
-
-        if (
-            positionCount !==
-            requirements[position]
-        ) {
-
-            alert(
-                "The optimizer failed the position rules."
-            );
-
-            return;
-
-        }
-
-    }
-
-
-    if (
-        totalCost > 1000
-    ) {
-
-        alert(
-            "The optimizer exceeded the £100m budget."
+            "The optimizer generated a duplicate player."
         );
 
         return;
@@ -4177,19 +4414,29 @@ if (
 
 
     // =====================================================
-    // REPLACE OLD SQUAD
+    // REPLACE CURRENT SQUAD
     // =====================================================
 
     squad.length = 0;
 
 
-    newSquad.forEach(
+    winner.squad.forEach(
         player =>
-            squad.push(player)
+            squad.push(
+                player
+            )
     );
 
 
-    saveSquad?.();
+    if (
+        typeof saveSquad ===
+        "function"
+    ) {
+
+        saveSquad();
+
+    }
+
 
     renderSquad();
 
@@ -4202,7 +4449,9 @@ if (
         );
 
 
-    if (squadElement) {
+    if (
+        squadElement
+    ) {
 
         squadElement.scrollIntoView({
 
@@ -4217,7 +4466,6 @@ if (
     }
 
 }
-
 // =========================================================
 // FORMATION SELECTOR
 // =========================================================
