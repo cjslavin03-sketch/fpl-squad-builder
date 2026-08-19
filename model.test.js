@@ -75,4 +75,80 @@ assert.ok(pair.captain);
 assert.ok(pair.vice);
 assert.notEqual(pair.captain.id, pair.vice.id);
 
+const preseasonPlayer = {
+    ...basePlayer,
+    starts: 0,
+    minutes: 0,
+    expected_goals: 0,
+    expected_assists: 0
+};
+const elitePrior = {
+    matches: 34,
+    starts: 32,
+    minutes: 2780,
+    expected_goals: 18,
+    expected_assists: 9,
+    saves: 0
+};
+const fringePrior = {
+    matches: 25,
+    starts: 4,
+    minutes: 620,
+    expected_goals: 0.5,
+    expected_assists: 0.7,
+    saves: 0
+};
+const elitePreseason = model.projectFixture(preseasonPlayer, homeFixture, {
+    gamesPlayed: 0,
+    fixturesLoaded: true,
+    prior: elitePrior
+});
+const fringePreseason = model.projectFixture(preseasonPlayer, homeFixture, {
+    gamesPlayed: 0,
+    fixturesLoaded: true,
+    prior: fringePrior
+});
+assert.ok(
+    elitePreseason.mean - fringePreseason.mean > 1,
+    "competitive priors must materially distinguish same-position players before GW1"
+);
+
+const cheapElite = model.projectFixture({
+    ...preseasonPlayer,
+    now_cost: 45,
+    selected_by_percent: 1
+}, homeFixture, { gamesPlayed: 0, fixturesLoaded: true, prior: elitePrior });
+const expensiveElite = model.projectFixture({
+    ...preseasonPlayer,
+    now_cost: 140,
+    selected_by_percent: 90
+}, homeFixture, { gamesPlayed: 0, fixturesLoaded: true, prior: elitePrior });
+assert.equal(
+    cheapElite.mean,
+    expensiveElite.mean,
+    "price and ownership must not alter a competitive-prior projection"
+);
+
+function projectionWithPrior(prior, minutes, starts, gamesPlayed) {
+    return model.projectFixture({
+        ...preseasonPlayer,
+        minutes,
+        starts,
+        expected_goals: minutes / 450,
+        expected_assists: minutes / 900
+    }, homeFixture, { gamesPlayed, fixturesLoaded: true, prior });
+}
+const smallSamplePriorGap = Math.abs(
+    projectionWithPrior(elitePrior, 90, 1, 1).mean -
+    projectionWithPrior(fringePrior, 90, 1, 1).mean
+);
+const largeSamplePriorGap = Math.abs(
+    projectionWithPrior(elitePrior, 1800, 20, 20).mean -
+    projectionWithPrior(fringePrior, 1800, 20, 20).mean
+);
+assert.ok(
+    largeSamplePriorGap < smallSamplePriorGap * 0.5,
+    "current-season performance must increasingly outweigh prior-season performance"
+);
+
 console.log("model tests passed");

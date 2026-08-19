@@ -1085,6 +1085,7 @@ let players = [];
 let teams = [];
 let fixtures = [];
 let fixturesLoaded = false;
+let previousSeasonPlayers = new Map();
 let squad = [];
 let lockedPlayerIds = new Set();
 function updateSquadStats() {
@@ -1214,6 +1215,23 @@ async function loadFPL() {
 
         teams =
             playerData.teams || [];
+
+        // The worker may provide a versioned previous-season competitive
+        // snapshot. Do not manufacture history when that optional payload is
+        // absent; the legacy preseason bridge below remains active instead.
+        const previousSeasonData =
+            playerData.previous_season_elements ||
+            playerData.previousSeasonElements ||
+            playerData.previous_season ||
+            [];
+        previousSeasonPlayers = new Map();
+        if (Array.isArray(previousSeasonData)) {
+            previousSeasonData.forEach(previousPlayer => {
+                const keys = [previousPlayer.id, previousPlayer.code]
+                    .filter(value => value !== null && value !== undefined);
+                keys.forEach(key => previousSeasonPlayers.set(String(key), previousPlayer));
+            });
+        }
 
 
         if (!players.length) {
@@ -1375,10 +1393,41 @@ function getCompletedMatchEstimate() {
     );
 }
 
-function getProjectionContext() {
+function getPreviousSeasonPlayer(player) {
+    return player.previous_season ||
+        player.previousSeason ||
+        previousSeasonPlayers.get(String(player.code)) ||
+        previousSeasonPlayers.get(String(player.id)) ||
+        null;
+}
+
+function calculateLegacyPreseasonProjection(player) {
+    const officialExpectedNext = num(player.ep_next);
+    if (officialExpectedNext > 0) return officialExpectedNext;
+
+    const ppg = num(player.points_per_game);
+    if (ppg > 0) {
+        return ppg * 0.72 + num(player.form) * 0.18 + 0.54;
+    }
+
+    // Temporary preservation of the builder's pre-v2 cold-start behavior.
+    // This is used only when the data source supplies no competitive history,
+    // and fades out completely over the first 720 current-season minutes.
+    const priceSignal = Math.max(0, Math.min(1, (getPrice(player) - 4) / 11));
+    const ownershipSignal = Math.max(0, Math.min(1,
+        num(player.selected_by_percent) / 50));
+    return 3.8 + priceSignal * 2.1 + ownershipSignal * 0.7 + 0.405;
+}
+
+function getProjectionContext(player) {
+    const prior = player ? getPreviousSeasonPlayer(player) : null;
     return {
         gamesPlayed: getCompletedMatchEstimate(),
-        fixturesLoaded
+        fixturesLoaded,
+        prior,
+        legacyPreseasonProjection: prior || !player
+            ? 0
+            : calculateLegacyPreseasonProjection(player)
     };
 }
 
@@ -1389,7 +1438,7 @@ function calculateAnalytics(player) {
     const projection = FPLModel.projectFixture(
         player,
         null,
-        getProjectionContext()
+        getProjectionContext(player)
     );
     const price = getPrice(player);
     const position = positions[player.element_type] || "MID";
@@ -1593,7 +1642,7 @@ function calculateGameweekProjectionDetails(
     return FPLModel.projectGameweek(
         player,
         getPlayerGameweekFixtures(player, gameweek),
-        getProjectionContext()
+        getProjectionContext(player)
     );
 }
 

@@ -22,16 +22,37 @@ single-page builder and its public rendering functions.
   including vice contingency and a same-club shared-risk haircut.
 - Finished optimizer candidates are compared on a legal XI, captain/vice and
   probability-weighted bench utility rather than the sum of all 15 players.
+- When the data source supplies `previous_season_elements`, the model uses each
+  player's previous competitive minutes, starts, xG, xA and saves as a prior.
+  Current-season exposure automatically receives more weight as it accumulates.
+
+## Preseason bridge
+
+The live worker does not currently guarantee a historical player snapshot. The
+app therefore accepts competitive history either in `previous_season_elements`
+or on a player's `previous_season` property, matched by stable player code where
+possible. It never invents missing historical statistics.
+
+When history is available, player-specific competitive rates distinguish an
+established elite player from a fringe player before GW1. When it is absent,
+the pre-v2 projection is retained as an explicitly temporary cold-start bridge.
+That compatibility path may contain FPL's `ep_next`, or ultimately price and
+ownership when every performance field is empty. It is not part of the
+independent event model and fades linearly to zero by 720 current-season
+minutes. Current injury availability and selected-fixture adjustments are
+applied after selecting either prior path.
 
 ## Deliberately deferred sections
 
-- A versioned historical-prior data store. Until it exists, conservative
-  position priors are used before GW1 and shrunk with current-season exposure.
+- Supplying and versioning the historical-prior snapshot at the worker. The
+  browser-side schema and automatic current-season transition are implemented.
 - A calibrated team-strength model and count-distribution simulation for exact
   clean-sheet, save-threshold and bonus points.
 - Scenario-exact FPL autosub evaluation.
 - Replacing the bounded beam search with an exact CP-SAT/MILP solver and an
-  optimality-gap report.
+  optimality-gap report. The current optimizer remains a temporary heuristic:
+  Best Overall evaluates XI/captain/bench utility, but is not guaranteed to be
+  the globally optimal legal squad.
 
 These are separate migrations so each can be backtested without replacing the
 entire builder in one change.
@@ -39,6 +60,8 @@ entire builder in one change.
 ## Excluded fields
 
 `ep_next`, `ep_this`, `form`, `points_per_game`, `total_points`, price and
-ownership do not feed projected points. Ownership is only available to the
-explicit differential strategy, and price remains a budget constraint plus a
-replacement-value input.
+ownership do not feed the independent event model. Ownership is otherwise only
+available to the explicit differential strategy, and price remains a budget
+constraint plus a replacement-value input. The temporary no-history preseason
+bridge is the documented exception and is removed automatically as current
+competitive minutes accumulate.

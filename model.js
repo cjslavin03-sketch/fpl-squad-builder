@@ -38,32 +38,81 @@
         return player.status === "a" || !player.status ? 1 : 0.75;
     }
 
+    function competitivePrior(context) {
+        const prior = context && context.prior;
+        if (!prior || number(prior.minutes) <= 0) return null;
+        return prior;
+    }
+
     function minutesDistribution(player, context) {
         const position = POSITION[number(player.element_type)] || "MID";
         const prior = PRIORS[position];
+        const playerPrior = competitivePrior(context);
         const gamesPlayed = Math.max(0, number(context && context.gamesPlayed));
         const starts = clamp(number(player.starts), 0, Math.max(gamesPlayed, number(player.starts)));
-        const priorMatches = gamesPlayed < 4 ? 8 : 5;
-        const startProbability = gamesPlayed > 0
-            ? (starts + priorMatches * prior.start) / (gamesPlayed + priorMatches)
+        const priorMinutes = number(playerPrior && playerPrior.minutes);
+        const priorStarts = number(playerPrior && playerPrior.starts);
+        const priorGames = Math.max(priorStarts, number(playerPrior && playerPrior.matches));
+        const playerPriorStartRate = priorGames > 0 ? priorStarts / priorGames : prior.start;
+        const priorMatches = playerPrior
+            ? Math.min(10, Math.max(3, priorGames))
+            : (gamesPlayed < 4 ? 8 : 5);
+        const startPrior = playerPrior
+            ? (playerPriorStartRate * priorMatches + prior.start * 3) / (priorMatches + 3)
             : prior.start;
+        const startProbability = (starts + priorMatches * startPrior) /
+            Math.max(1, gamesPlayed + priorMatches);
         const observedStartMinutes = starts > 0
             ? clamp(number(player.minutes) / starts, 45, 90)
             : prior.startMinutes;
-        const startMinutes = (starts * observedStartMinutes + 5 * prior.startMinutes) / (starts + 5);
+        const playerPriorStartMinutes = priorStarts > 0
+            ? clamp(priorMinutes / priorStarts, 45, 90)
+            : prior.startMinutes;
+        const startMinutes = (starts * observedStartMinutes + priorMatches * playerPriorStartMinutes) /
+            Math.max(1, starts + priorMatches);
         const available = availability(player);
         const pStart = available * clamp(startProbability, 0, 1);
         const pSub = available * (1 - clamp(startProbability, 0, 1)) * (position === "GK" ? 0.02 : 0.55);
         const pZero = clamp(1 - pStart - pSub, 0, 1);
         const p60 = pStart * clamp((startMinutes - 45) / 30, 0.25, 1);
         const expectedMinutes = pStart * startMinutes + pSub * prior.subMinutes;
-        return { pStart, pSub, pZero, p60, expectedMinutes, availability: available };
+        return {
+            pStart, pSub, pZero, p60, expectedMinutes, availability: available,
+            priorWeight: priorMatches / Math.max(1, gamesPlayed + priorMatches)
+        };
     }
 
     function shrunkRate(total, minutes, priorRate, priorNineties) {
         const nineties = Math.max(0, minutes / 90);
         return (Math.max(0, total) + priorNineties * priorRate) /
             (nineties + priorNineties);
+    }
+
+    function performancePrior(position, context) {
+        const cohort = PRIORS[position];
+        const prior = competitivePrior(context);
+        if (!prior) {
+            return {
+                xG90: cohort.xG90,
+                xA90: cohort.xA90,
+                saves90: cohort.saves90,
+                nineties: 8,
+                source: "position"
+            };
+        }
+        const priorNineties = Math.max(1, number(prior.minutes) / 90);
+        const playerWeight = Math.min(10, priorNineties);
+        const cohortWeight = 3;
+        return {
+            xG90: (number(prior.expected_goals) + cohortWeight * cohort.xG90) /
+                (priorNineties + cohortWeight),
+            xA90: (number(prior.expected_assists) + cohortWeight * cohort.xA90) /
+                (priorNineties + cohortWeight),
+            saves90: (number(prior.saves) + cohortWeight * cohort.saves90) /
+                (priorNineties + cohortWeight),
+            nineties: playerWeight,
+            source: "previous-season"
+        };
     }
 
     function fixtureContext(player, fixture) {
@@ -90,8 +139,11 @@
         const minutes = minutesDistribution(player, context || {});
         const venue = fixtureContext(player, fixture);
         const seasonMinutes = number(player.minutes);
-        const xG90 = shrunkRate(number(player.expected_goals), seasonMinutes, prior.xG90, 8);
-        const xA90 = shrunkRate(number(player.expected_assists), seasonMinutes, prior.xA90, 8);
+        const performance = performancePrior(position, context || {});
+        const xG90 = shrunkRate(number(player.expected_goals), seasonMinutes,
+            performance.xG90, performance.nineties);
+        const xA90 = shrunkRate(number(player.expected_assists), seasonMinutes,
+            performance.xA90, performance.nineties);
         const scale = minutes.expectedMinutes / 90;
         const expectedGoals = xG90 * scale * venue.attack;
         const expectedAssists = xA90 * scale * venue.attack;
@@ -101,14 +153,30 @@
         const cleanSheetProbability = clamp(baseCleanSheetProbability * venue.cleanSheet, 0.06, 0.55);
         const cleanSheetPoints = CLEAN_SHEET_POINTS[position] * minutes.p60 * cleanSheetProbability;
         const saves90 = position === "GK"
-            ? shrunkRate(number(player.saves), seasonMinutes, prior.saves90, 8)
+            ? shrunkRate(number(player.saves), seasonMinutes,
+                performance.saves90, performance.nineties)
             : 0;
         const expectedSaves = saves90 * scale * venue.saves;
         const savePoints = position === "GK" ? expectedSaves / 3 : 0;
         const concededDeduction = position === "GK" || position === "DEF"
             ? minutes.p60 * clamp((1 - cleanSheetProbability) * (venue.difficulty >= 4 ? 0.38 : 0.22), 0, 0.5)
             : 0;
-        const mean = Math.max(0, appearancePoints + attackingPoints + cleanSheetPoints + savePoints - concededDeduction);
+        const independentMean = Math.max(0,
+            appearancePoints + attackingPoints + cleanSheetPoints + savePoints - concededDeduction);
+        const currentNineties = seasonMinutes / 90;
+        const useLegacyBridge = performance.source === "position" &&
+            number(context && context.legacyPreseasonProjection) > 0 && currentNineties < 8;
+        const legacyWeight = useLegacyBridge ? clamp(1 - currentNineties / 8, 0, 1) : 0;
+        const fixtureBridge = position === "GK"
+            ? venue.cleanSheet * 0.55 + venue.saves * 0.45
+            : position === "DEF"
+                ? venue.cleanSheet * 0.65 + venue.attack * 0.35
+                : position === "MID"
+                    ? venue.attack * 0.9 + venue.cleanSheet * 0.1
+                    : venue.attack;
+        const bridgedMean = number(context && context.legacyPreseasonProjection) *
+            minutes.availability * fixtureBridge;
+        const mean = independentMean * (1 - legacyWeight) + bridgedMean * legacyWeight;
         const eventVariance = GOAL_POINTS[position] * GOAL_POINTS[position] * expectedGoals +
             9 * expectedAssists + cleanSheetPoints * Math.max(0, CLEAN_SHEET_POINTS[position] - cleanSheetPoints);
         const absenceVariance = minutes.pZero * (1 - minutes.pZero) * mean * mean;
@@ -122,6 +190,10 @@
             pZero: minutes.pZero,
             p60: minutes.p60,
             availability: minutes.availability,
+            priorSource: legacyWeight > 0 ? "legacy-bridge" : performance.source,
+            priorWeight: performance.nineties /
+                Math.max(performance.nineties, performance.nineties + currentNineties),
+            legacyWeight,
             xG90,
             xA90,
             components: { appearancePoints, attackingPoints, cleanSheetPoints, savePoints, concededDeduction }
