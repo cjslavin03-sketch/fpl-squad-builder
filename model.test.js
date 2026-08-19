@@ -151,4 +151,37 @@ assert.ok(
     "current-season performance must increasingly outweigh prior-season performance"
 );
 
+const displayRating = mean => model.displayRatings({
+    mean,
+    ceiling: mean + 3,
+    expectedMinutes: 80,
+    availability: 1,
+    priorSource: "position"
+}, { valueAboveReplacement: 0, seasonMinutes: 900 }).overall;
+const representativeRatings = [2.5, 4, 5.5, 7].map(displayRating);
+assert.deepEqual(
+    representativeRatings,
+    [55.6, 74, 83.8, 90.4],
+    "representative one-match projections should have intuitive display ratings"
+);
+assert.ok(representativeRatings[0] < 62, "2.5 expected points must not look elite");
+assert.ok(representativeRatings[1] >= 70, "4 expected points should look solid");
+assert.ok(representativeRatings[2] >= 82, "5.5 expected points should look very strong");
+assert.ok(representativeRatings[3] >= 88, "7 expected points should look elite");
+assert.ok(representativeRatings.every((rating, index, ratings) =>
+    index === 0 || rating > ratings[index - 1]
+), "Overall display calibration must be monotonic");
+
+const calibratedDisplays = model.displayRatings({
+    mean: 5.5,
+    ceiling: 9,
+    expectedMinutes: 82,
+    availability: 1,
+    priorSource: "previous-season"
+}, { valueAboveReplacement: 1, seasonMinutes: 900 });
+assert.ok(calibratedDisplays.valueScore >= 70);
+assert.ok(calibratedDisplays.minutesScore >= 90);
+assert.ok(calibratedDisplays.upside >= 85);
+assert.ok(calibratedDisplays.confidence >= 80);
+
 console.log("model tests passed");

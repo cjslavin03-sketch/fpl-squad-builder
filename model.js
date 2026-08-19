@@ -29,6 +29,63 @@
         return Math.max(minimum, Math.min(maximum, value));
     }
 
+    function interpolateScore(value, anchors) {
+        const input = number(value);
+        if (input <= anchors[0][0]) return anchors[0][1];
+        for (let index = 1; index < anchors.length; index += 1) {
+            const [upperInput, upperScore] = anchors[index];
+            const [lowerInput, lowerScore] = anchors[index - 1];
+            if (input <= upperInput) {
+                const progress = (input - lowerInput) / (upperInput - lowerInput);
+                return lowerScore + progress * (upperScore - lowerScore);
+            }
+        }
+        return anchors[anchors.length - 1][1];
+    }
+
+    // Presentation-only translations of model outputs. These deliberately live
+    // outside projectFixture/projectGameweek so they cannot affect projections
+    // or any optimization objective.
+    function displayRatings(projection, context) {
+        const details = context || {};
+        const projectionScore = interpolateScore(projection && projection.mean, [
+            [0, 20], [1.5, 40], [2.5, 56], [4, 75.5], [5.5, 86],
+            [7, 93], [9, 97], [12, 99]
+        ]);
+        const valueScore = interpolateScore(details.valueAboveReplacement, [
+            [-2, 18], [-1, 34], [0, 50], [0.5, 62], [1, 73],
+            [2, 86], [3.5, 94], [5, 98]
+        ]);
+        const minutesScore = interpolateScore(projection && projection.expectedMinutes, [
+            [0, 0], [20, 24], [45, 52], [60, 70], [75, 86],
+            [85, 95], [90, 99]
+        ]);
+        const upside = interpolateScore(projection && projection.ceiling, [
+            [0, 10], [2, 30], [4, 52], [6, 70], [8, 83],
+            [10, 91], [13, 97], [16, 99]
+        ]);
+        const evidenceScore = interpolateScore(details.seasonMinutes, [
+            [0, 35], [180, 50], [450, 65], [900, 78],
+            [1800, 90], [2700, 96]
+        ]);
+        const priorBonus = projection && projection.priorSource === "previous-season" ? 8 : 0;
+        const availabilityPenalty = (1 - clamp(number(projection && projection.availability), 0, 1)) * 25;
+        const confidence = clamp(evidenceScore + priorBonus - availabilityPenalty, 5, 98);
+
+        // Expected points account for 94% of Overall. Value can move the
+        // displayed rating by at most about three points around neutral.
+        const overall = clamp(projectionScore * 0.94 + valueScore * 0.06, 0, 99);
+        const rounded = score => Number(score.toFixed(1));
+        return {
+            overall: rounded(overall),
+            projectionScore: rounded(projectionScore),
+            valueScore: rounded(valueScore),
+            minutesScore: rounded(minutesScore),
+            upside: rounded(upside),
+            confidence: rounded(confidence)
+        };
+    }
+
     function availability(player) {
         if (["i", "s", "u"].includes(player.status)) return 0;
         if (player.chance_of_playing_next_round !== null &&
@@ -236,5 +293,8 @@
         return best;
     }
 
-    return { POSITION, PRIORS, minutesDistribution, projectFixture, projectGameweek, captainPair };
+    return {
+        POSITION, PRIORS, minutesDistribution, projectFixture, projectGameweek,
+        captainPair, displayRatings
+    };
 }));
