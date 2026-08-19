@@ -113,6 +113,30 @@ assert.ok(
     "competitive priors must materially distinguish same-position players before GW1"
 );
 
+const scoringCompletePrior = {
+    ...elitePrior,
+    bonus: 30,
+    bps: 720,
+    yellow_cards: 4,
+    red_cards: 1,
+    own_goals: 0,
+    penalties_missed: 1
+};
+const scoringComplete = model.projectFixture(preseasonPlayer, homeFixture, {
+    gamesPlayed: 0, fixturesLoaded: true, prior: scoringCompletePrior
+});
+assert.ok(scoringComplete.components.bonusPoints > 0);
+assert.ok(scoringComplete.components.otherDeduction > 0);
+assert.ok(
+    scoringComplete.components.bonusPoints > scoringComplete.components.otherDeduction,
+    "established bonus production should survive conservative rare-event deductions"
+);
+assert.equal(
+    scoringComplete.components.attackingPoints,
+    elitePreseason.components.attackingPoints,
+    "bonus and deductions must not double-count or alter xG/xA attacking points"
+);
+
 const cheapElite = model.projectFixture({
     ...preseasonPlayer,
     now_cost: 45,

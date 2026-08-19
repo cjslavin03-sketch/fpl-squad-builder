@@ -11,10 +11,10 @@
     const GOAL_POINTS = { GK: 6, DEF: 6, MID: 5, FWD: 4 };
     const CLEAN_SHEET_POINTS = { GK: 4, DEF: 4, MID: 1, FWD: 0 };
     const PRIORS = {
-        GK: { start: 0.72, startMinutes: 90, subMinutes: 0, xG90: 0.001, xA90: 0.002, saves90: 3.0 },
-        DEF: { start: 0.68, startMinutes: 82, subMinutes: 14, xG90: 0.05, xA90: 0.08, saves90: 0 },
-        MID: { start: 0.65, startMinutes: 79, subMinutes: 18, xG90: 0.18, xA90: 0.16, saves90: 0 },
-        FWD: { start: 0.62, startMinutes: 77, subMinutes: 20, xG90: 0.32, xA90: 0.12, saves90: 0 }
+        GK: { start: 0.72, startMinutes: 90, subMinutes: 0, xG90: 0.001, xA90: 0.002, saves90: 3.0, bps90: 15 },
+        DEF: { start: 0.68, startMinutes: 82, subMinutes: 14, xG90: 0.05, xA90: 0.08, saves90: 0, bps90: 15 },
+        MID: { start: 0.65, startMinutes: 79, subMinutes: 18, xG90: 0.18, xA90: 0.16, saves90: 0, bps90: 14 },
+        FWD: { start: 0.62, startMinutes: 77, subMinutes: 20, xG90: 0.32, xA90: 0.12, saves90: 0, bps90: 13 }
     };
     const ATTACK_FDR = { 1: 1.18, 2: 1.09, 3: 1, 4: 0.91, 5: 0.82 };
     const CLEAN_SHEET_FDR = { 1: 1.30, 2: 1.14, 3: 1, 4: 0.78, 5: 0.58 };
@@ -153,6 +153,8 @@
                 xG90: cohort.xG90,
                 xA90: cohort.xA90,
                 saves90: cohort.saves90,
+                bonus90: 0,
+                deduction90: 0,
                 nineties: 8,
                 source: "position"
             };
@@ -160,6 +162,23 @@
         const priorNineties = Math.max(1, number(prior.minutes) / 90);
         const playerWeight = Math.min(10, priorNineties);
         const cohortWeight = 3;
+        // Bonus is a noisy, rank-dependent outcome. Eight scoreless pseudo-90s
+        // prevent a single hot season being carried forward wholesale. BPS is
+        // used only to cap the amount of credible exposure behind observed
+        // bonus, never as a second additive scoring stream.
+        const bonusWeight = 8;
+        const observedBonus90 = 90 * number(prior.bonus) / number(prior.minutes);
+        const observedBps90 = 90 * number(prior.bps) / number(prior.minutes);
+        const credibleBonusNineties = Math.min(priorNineties,
+            priorNineties * clamp(observedBps90 / Math.max(1, cohort.bps90), 0, 1));
+        const bonus90 = observedBonus90 * credibleBonusNineties /
+            (credibleBonusNineties + bonusWeight);
+        // Rare negative events receive twelve scoreless pseudo-90s. This
+        // deliberately carries forward only supported player evidence and
+        // keeps the expected deductions small.
+        const deductionTotal = number(prior.yellow_cards) + 3 * number(prior.red_cards) +
+            2 * number(prior.own_goals) + 2 * number(prior.penalties_missed);
+        const deduction90 = deductionTotal / (priorNineties + 12);
         return {
             xG90: (number(prior.expected_goals) + cohortWeight * cohort.xG90) /
                 (priorNineties + cohortWeight),
@@ -167,6 +186,8 @@
                 (priorNineties + cohortWeight),
             saves90: (number(prior.saves) + cohortWeight * cohort.saves90) /
                 (priorNineties + cohortWeight),
+            bonus90,
+            deduction90,
             nineties: playerWeight,
             source: "previous-season"
         };
@@ -205,7 +226,9 @@
         const expectedGoals = xG90 * scale * venue.attack;
         const expectedAssists = xA90 * scale * venue.attack;
         const appearancePoints = (1 - minutes.pZero) + minutes.p60;
-        const attackingPoints = GOAL_POINTS[position] * expectedGoals + 3 * expectedAssists;
+        const goalPoints = GOAL_POINTS[position] * expectedGoals;
+        const assistPoints = 3 * expectedAssists;
+        const attackingPoints = goalPoints + assistPoints;
         const baseCleanSheetProbability = position === "GK" || position === "DEF" ? 0.28 : 0.25;
         const cleanSheetProbability = clamp(baseCleanSheetProbability * venue.cleanSheet, 0.06, 0.55);
         const cleanSheetPoints = CLEAN_SHEET_POINTS[position] * minutes.p60 * cleanSheetProbability;
@@ -215,11 +238,14 @@
             : 0;
         const expectedSaves = saves90 * scale * venue.saves;
         const savePoints = position === "GK" ? expectedSaves / 3 : 0;
+        const bonusPoints = performance.bonus90 * scale;
+        const otherDeduction = performance.deduction90 * scale;
         const concededDeduction = position === "GK" || position === "DEF"
             ? minutes.p60 * clamp((1 - cleanSheetProbability) * (venue.difficulty >= 4 ? 0.38 : 0.22), 0, 0.5)
             : 0;
         const independentMean = Math.max(0,
-            appearancePoints + attackingPoints + cleanSheetPoints + savePoints - concededDeduction);
+            appearancePoints + attackingPoints + cleanSheetPoints + savePoints + bonusPoints -
+            concededDeduction - otherDeduction);
         const currentNineties = seasonMinutes / 90;
         const useLegacyBridge = performance.source === "position" &&
             number(context && context.legacyPreseasonProjection) > 0 && currentNineties < 8;
@@ -253,7 +279,11 @@
             legacyWeight,
             xG90,
             xA90,
-            components: { appearancePoints, attackingPoints, cleanSheetPoints, savePoints, concededDeduction }
+            components: {
+                appearancePoints, goalPoints, assistPoints, attackingPoints,
+                cleanSheetPoints, savePoints,
+                bonusPoints, otherDeduction, concededDeduction
+            }
         };
     }
 
