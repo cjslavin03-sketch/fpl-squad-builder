@@ -3446,7 +3446,16 @@ function buildOptimizedSquad(strategy) {
 
             const player =
                 item.player;
-
+// Never use the same player more than once
+if (
+    newSquad.some(
+        p =>
+            Number(p.id) ===
+            Number(player.id)
+    )
+) {
+    continue;
+}
             const position =
                 Number(player.element_type);
 
