@@ -195,7 +195,6 @@ jobs:
 
         if (!bestMove) break;
 
-        const oldPlayer = newSquad[bestMove.index];
         newSquad[bestMove.index] = bestMove.replacement;
         totalCost = bestMove.newTotalCost;
 
@@ -233,3 +232,5 @@ jobs:
           git add index.html
           git diff --cached --quiet || git commit -m "Fix Build My Squad optimizer"
           git push
+
+# Trigger optimizer replacement from the connected GitHub workflow.
