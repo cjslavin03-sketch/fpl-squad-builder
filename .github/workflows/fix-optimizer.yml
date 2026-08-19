@@ -1,0 +1,235 @@
+name: Fix FPL optimizer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Replace optimizer
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          start = text.index('function buildOptimizedSquad(strategy) {')
+          marker = '\n// =========================================================\n// FORMATION SELECTOR'
+          end = text.index(marker, start)
+
+          new_function = r'''function buildOptimizedSquad(strategy) {
+
+    if (!players || !players.length) {
+        alert("FPL player data has not loaded yet.");
+        return;
+    }
+
+    const weights = {
+        overall:     { projected: 0.35, value: 0.20, minutes: 0.20, upside: 0.15, confidence: 0.10 },
+        safe:        { projected: 0.25, value: 0.10, minutes: 0.40, upside: 0.05, confidence: 0.20 },
+        moneyball:   { projected: 0.25, value: 0.45, minutes: 0.15, upside: 0.10, confidence: 0.05 },
+        attack:      { projected: 0.30, value: 0.10, minutes: 0.15, upside: 0.35, confidence: 0.10 },
+        balanced:    { projected: 0.25, value: 0.25, minutes: 0.25, upside: 0.15, confidence: 0.10 },
+        differential:{ projected: 0.25, value: 0.20, minutes: 0.15, upside: 0.30, confidence: 0.10 },
+        upside:      { projected: 0.25, value: 0.10, minutes: 0.10, upside: 0.45, confidence: 0.10 }
+    };
+
+    const selectedWeights = weights[strategy] || weights.overall;
+
+    const scorePlayer = player => {
+        const a = calculateAnalytics(player);
+        return (
+            (a.projection * 10) * selectedWeights.projected +
+            a.valueScore * selectedWeights.value +
+            a.minutesScore * selectedWeights.minutes +
+            a.upside * selectedWeights.upside +
+            a.confidence * selectedWeights.confidence
+        );
+    };
+
+    const requirements = { 1: 2, 2: 5, 3: 5, 4: 3 };
+    const lockedPlayers = squad.filter(player => lockedPlayerIds.has(Number(player.id)));
+    const lockedIds = new Set(lockedPlayers.map(player => Number(player.id)));
+
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    const clubCounts = {};
+    let totalCost = 0;
+
+    for (const player of lockedPlayers) {
+        const position = Number(player.element_type);
+        const club = Number(player.team);
+        const price = Number(player.now_cost || 0);
+
+        if (!requirements[position]) continue;
+
+        counts[position]++;
+        clubCounts[club] = (clubCounts[club] || 0) + 1;
+        totalCost += price;
+    }
+
+    if (
+        lockedPlayers.length > 15 ||
+        counts[1] > 2 || counts[2] > 5 || counts[3] > 5 || counts[4] > 3 ||
+        Object.values(clubCounts).some(count => count > 3) ||
+        totalCost > 1000
+    ) {
+        alert("Your locked players make a legal £100m squad impossible. Unlock one or more players and try again.");
+        return;
+    }
+
+    const candidatesByPosition = { 1: [], 2: [], 3: [], 4: [] };
+
+    players.forEach(player => {
+        const id = Number(player.id);
+        const position = Number(player.element_type);
+        if (!requirements[position] || lockedIds.has(id)) return;
+
+        candidatesByPosition[position].push({
+            player,
+            score: scorePlayer(player),
+            price: Number(player.now_cost || 0)
+        });
+    });
+
+    Object.values(candidatesByPosition).forEach(list => {
+        list.sort((a, b) => b.score - a.score);
+    });
+
+    const newSquad = [...lockedPlayers];
+
+    // First create a guaranteed legal baseline using the cheapest eligible players.
+    for (const position of [1, 2, 3, 4]) {
+        const needed = requirements[position] - counts[position];
+        if (needed <= 0) continue;
+
+        const cheapest = [...candidatesByPosition[position]]
+            .sort((a, b) => a.price - b.price);
+
+        let added = 0;
+
+        for (const candidate of cheapest) {
+            const player = candidate.player;
+            const club = Number(player.team);
+
+            if (newSquad.some(p => Number(p.id) === Number(player.id))) continue;
+            if ((clubCounts[club] || 0) >= 3) continue;
+            if (totalCost + candidate.price > 1000) continue;
+
+            newSquad.push(player);
+            counts[position]++;
+            clubCounts[club] = (clubCounts[club] || 0) + 1;
+            totalCost += candidate.price;
+            added++;
+
+            if (added >= needed) break;
+        }
+
+        if (added < needed) {
+            alert("I couldn't find enough legal players to complete the squad. Try unlocking a player or another strategy.");
+            return;
+        }
+    }
+
+    // Upgrade the baseline repeatedly while preserving every FPL rule.
+    for (let pass = 0; pass < 20; pass++) {
+        let bestMove = null;
+        let bestGain = 0;
+
+        for (let i = 0; i < newSquad.length; i++) {
+            const current = newSquad[i];
+            if (lockedIds.has(Number(current.id))) continue;
+
+            const position = Number(current.element_type);
+            const currentScore = scorePlayer(current);
+            const currentPrice = Number(current.now_cost || 0);
+            const currentClub = Number(current.team);
+
+            for (const candidate of candidatesByPosition[position]) {
+                const replacement = candidate.player;
+                const replacementId = Number(replacement.id);
+                const replacementClub = Number(replacement.team);
+
+                if (replacementId === Number(current.id)) continue;
+                if (newSquad.some((p, index) => index !== i && Number(p.id) === replacementId)) continue;
+
+                const newClubCount =
+                    (clubCounts[replacementClub] || 0) +
+                    (replacementClub === currentClub ? 0 : 1);
+
+                const oldClubCountAfter =
+                    (clubCounts[currentClub] || 0) -
+                    (replacementClub === currentClub ? 0 : 1);
+
+                if (newClubCount > 3 || oldClubCountAfter < 0) continue;
+
+                const newTotalCost =
+                    totalCost - currentPrice + candidate.price;
+
+                if (newTotalCost > 1000) continue;
+
+                const gain = candidate.score - currentScore;
+
+                if (gain > bestGain) {
+                    bestGain = gain;
+                    bestMove = {
+                        index: i,
+                        replacement,
+                        currentClub,
+                        replacementClub,
+                        newTotalCost
+                    };
+                }
+            }
+        }
+
+        if (!bestMove) break;
+
+        const oldPlayer = newSquad[bestMove.index];
+        newSquad[bestMove.index] = bestMove.replacement;
+        totalCost = bestMove.newTotalCost;
+
+        clubCounts[bestMove.currentClub]--;
+        clubCounts[bestMove.replacementClub] =
+            (clubCounts[bestMove.replacementClub] || 0) + 1;
+    }
+
+    if (newSquad.length !== 15) {
+        alert("I couldn't build a complete legal squad with the current locked players and £100m budget.");
+        return;
+    }
+
+    squad.length = 0;
+    newSquad.forEach(player => squad.push(player));
+
+    saveSquad();
+    renderSquad();
+    renderPlayers();
+
+    const squadElement = document.querySelector('.squad');
+    if (squadElement) {
+        squadElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+}'''
+
+          text = text[:start] + new_function + text[end:]
+          path.write_text(text, encoding='utf-8')
+  
+      - name: Commit optimizer fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Fix Build My Squad optimizer"
+          git push
