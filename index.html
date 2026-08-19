@@ -328,6 +328,7 @@ button {
     text-align: center;
     color: white;
     cursor: pointer;
+    position: relative;
 }
 
 
@@ -349,6 +350,30 @@ button {
     font-weight: bold;
 
     border: 3px solid #37003c;
+    box-shadow: 0 3px 8px rgba(0,0,0,.22);
+    position: relative;
+}
+
+.pitch-player-role {
+    position: absolute;
+    top: -6px;
+    right: -7px;
+    width: 23px;
+    height: 23px;
+    display: grid;
+    place-items: center;
+    border: 2px solid white;
+    border-radius: 50%;
+    background: #00ff87;
+    color: #37003c;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+
+.pitch-player-role.vice {
+    background: #e9d7eb;
 }
 
 
@@ -366,6 +391,78 @@ button {
 .pitch-player-price {
     font-size: 11px;
 }
+
+.pitch-player-fixture {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 20px;
+    max-width: 100%;
+    margin-top: 4px;
+    padding: 3px 7px;
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 999px;
+    background: rgba(20,45,31,.72);
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: normal;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+
+.pitch-player-projection {
+    display: table;
+    margin: 4px auto 0;
+    padding: 4px 8px;
+    border-radius: 7px;
+    background: #37003c;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 2px 5px rgba(0,0,0,.24);
+}
+
+.pitch-player-projection.captain-points {
+    background: #00ff87;
+    color: #240028;
+}
+
+.gameweek-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f4f1f5;
+    font-weight: 700;
+}
+
+.gameweek-control select { min-width: 100px; }
+
+.captain-control {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.captain-card {
+    min-width: 0;
+    padding: 11px;
+    border: 1px solid #e4dce5;
+    border-left: 4px solid #00ff87;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #fff 55%, #f5edf6);
+}
+
+.captain-card.vice { border-left-color: #9b6aa0; }
+.captain-card strong { display: block; color: #37003c; font-size: 14px; }
+.captain-suggestion { margin: 4px 0 8px; color: #665c68; font-size: 11px; line-height: 1.3; }
+.captain-card select { width: 100%; min-width: 0; padding: 9px 28px 9px 9px; font-size: 12px; }
 
 
 /* Empty position */
@@ -510,6 +607,12 @@ button {
         font-size: 10px;
     }
 
+    .pitch-player-fixture { padding-inline: 5px; font-size: 8px; }
+    .pitch-player-projection { padding: 4px 6px; font-size: 9px; }
+    .captain-control { gap: 7px; }
+    .captain-card { padding: 9px 8px; }
+    .captain-card select { font-size: 11px; }
+
 }
 /* =========================================================
    BUILD MY SQUAD
@@ -641,9 +744,9 @@ button {
 </div>
         <div class="captain-control">
 
-    <div>
+    <div class="captain-card">
         <strong>Captain</strong>
-        <div id="captain-suggestion">
+        <div id="captain-suggestion" class="captain-suggestion">
             Suggested: —
         </div>
 
@@ -655,9 +758,9 @@ button {
     </div>
 
 
-    <div>
+    <div class="captain-card vice">
         <strong>Vice Captain</strong>
-        <div id="vice-captain-suggestion">
+        <div id="vice-captain-suggestion" class="captain-suggestion">
             Suggested: —
         </div>
 
@@ -3521,6 +3624,16 @@ function renderSquad() {
 
         ].map(p => p.id));
 
+    const startingXI = [
+        ...startingGK,
+        ...startingDef,
+        ...startingMid,
+        ...startingFwd
+    ];
+
+    const pitchCaptain = getCurrentCaptain(startingXI);
+    const pitchViceCaptain = getCurrentViceCaptain(startingXI);
+
 
     // -----------------------------------------------------
     // Render pitch
@@ -3530,28 +3643,36 @@ function renderSquad() {
         pitchFwd,
         startingFwd,
         "FWD",
-        forwardCount
+        forwardCount,
+        pitchCaptain,
+        pitchViceCaptain
     );
 
     renderPitchRow(
         pitchMid,
         startingMid,
         "MID",
-        midfielderCount
+        midfielderCount,
+        pitchCaptain,
+        pitchViceCaptain
     );
 
     renderPitchRow(
         pitchDef,
         startingDef,
         "DEF",
-        defenderCount
+        defenderCount,
+        pitchCaptain,
+        pitchViceCaptain
     );
 
     renderPitchRow(
         pitchGK,
         startingGK,
         "GK",
-        1
+        1,
+        pitchCaptain,
+        pitchViceCaptain
     );
 
 
@@ -3601,14 +3722,6 @@ function renderSquad() {
 
     }
     updateSquadStats();
-const startingXI = [
-
-    ...startingGK,
-    ...startingDef,
-    ...startingMid,
-    ...startingFwd
-
-];
 updateCaptainControls(
     startingXI
 );
@@ -3699,7 +3812,9 @@ function renderPitchRow(
     container,
     playersInRow,
     position,
-    required
+    required,
+    currentCaptain,
+    currentViceCaptain
 ) {
 
     for (
@@ -3795,25 +3910,14 @@ const gwProjection =
         selectedGameweek
     );
 
-const currentStartingXI =
-    squad.filter(
-        p =>
-            !document
-                .querySelector(
-                    `.bench-player[data-player-id="${p.id}"]`
-                )
-    );
-
-
-const currentCaptain =
-    getCurrentCaptain(
-        currentStartingXI
-    );
-
-
 const isCaptain =
     currentCaptain &&
     Number(currentCaptain.id) ===
+    Number(player.id);
+
+const isViceCaptain =
+    currentViceCaptain &&
+    Number(currentViceCaptain.id) ===
     Number(player.id);
 
 
@@ -3825,6 +3929,11 @@ div.innerHTML =
 
     '<div class="pitch-player-card">' +
         getInitials(player.web_name) +
+        (isCaptain
+            ? '<span class="pitch-player-role" aria-label="Captain">C</span>'
+            : isViceCaptain
+                ? '<span class="pitch-player-role vice" aria-label="Vice Captain">V</span>'
+                : '') +
     '</div>' +
 
     '<div class="pitch-player-name">' +
@@ -3843,9 +3952,11 @@ div.innerHTML =
         fixtureText +
     '</div>' +
 
-    '<div class="pitch-player-projection">' +
+    '<div class="pitch-player-projection' +
+        (isCaptain ? ' captain-points' : '') +
+        '">' +
         displayedProjection.toFixed(1) +
-(isCaptain ? " pts (C)" : " pts")
+        " pts" +
     '</div>';
 
             container.appendChild(div);
