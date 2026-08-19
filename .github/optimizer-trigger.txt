@@ -1,0 +1,1 @@
+Trigger optimizer replacement after strategy optimizer fix.
