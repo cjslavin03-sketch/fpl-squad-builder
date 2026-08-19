@@ -3033,7 +3033,10 @@ function buildOptimizedSquad(strategy) {
         alert("FPL player data has not loaded yet.");
         return;
     }
-
+// Build My Squad only preserves players that are
+// explicitly locked by the user.
+const activeLockedIds =
+    new Set(lockedPlayerIds);
     // -----------------------------------------------------
     // Strategy weights
     // -----------------------------------------------------
@@ -3109,7 +3112,7 @@ function buildOptimizedSquad(strategy) {
     const lockedPlayers =
         squad.filter(
             player =>
-                lockedPlayerIds.has(
+                activePlayerIds.has(
                     Number(player.id)
                 )
         );
