@@ -3701,23 +3701,108 @@ function renderPitchRow(
             div.className =
                 "pitch-player";
 
-            div.innerHTML =
+            const playerFixtures =
+    getPlayerGameweekFixtures(
+        player,
+        selectedGameweek
+    );
 
-                '<div class="pitch-player-card">' +
-                    getInitials(player.web_name) +
-                '</div>' +
 
-                '<div class="pitch-player-name">' +
-                    player.web_name +
-                '</div>' +
+let fixtureText =
+    "No Fixture";
 
-                '<div class="pitch-player-price">' +
-                    "£" +
-                    Number(
-                        player.now_cost / 10
-                    ).toFixed(1) +
-                    "m" +
-                '</div>';
+
+if (playerFixtures.length) {
+
+    fixtureText =
+        playerFixtures
+            .map(
+                fixture => {
+
+                    const teamId =
+                        Number(player.team);
+
+                    const isHome =
+                        Number(
+                            fixture.team_h
+                        ) === teamId;
+
+                    const opponentId =
+                        isHome
+                            ? Number(
+                                fixture.team_a
+                            )
+                            : Number(
+                                fixture.team_h
+                            );
+
+
+                    const opponent =
+                        teams.find(
+                            team =>
+                                Number(team.id) ===
+                                opponentId
+                        );
+
+
+                    const opponentName =
+                        opponent
+                            ? (
+                                opponent.short_name ||
+                                opponent.name
+                            )
+                            : "OPP";
+
+
+                    return (
+                        opponentName +
+                        (
+                            isHome
+                                ? " (H)"
+                                : " (A)"
+                        )
+                    );
+
+                }
+            )
+            .join(" + ");
+
+}
+
+
+const gwProjection =
+    calculateGameweekProjection(
+        player,
+        selectedGameweek
+    );
+
+
+div.innerHTML =
+
+    '<div class="pitch-player-card">' +
+        getInitials(player.web_name) +
+    '</div>' +
+
+    '<div class="pitch-player-name">' +
+        player.web_name +
+    '</div>' +
+
+    '<div class="pitch-player-price">' +
+        "£" +
+        Number(
+            player.now_cost / 10
+        ).toFixed(1) +
+        "m" +
+    '</div>' +
+
+    '<div class="pitch-player-fixture">' +
+        fixtureText +
+    '</div>' +
+
+    '<div class="pitch-player-projection">' +
+        gwProjection.toFixed(1) +
+        " pts" +
+    '</div>';
 
             container.appendChild(div);
 
@@ -5571,16 +5656,39 @@ if (gameweekSelect) {
             );
 
 
-        const projectedTotal =
-            startingXI.reduce(
-                (sum, player) =>
-                    sum +
-                    calculateGameweekProjection(
-                        player,
-                        selectedGameweek
-                    ),
-                0
-            );
+        const baseProjectedTotal =
+    startingXI.reduce(
+        (sum, player) =>
+            sum +
+            calculateGameweekProjection(
+                player,
+                selectedGameweek
+            ),
+        0
+    );
+
+
+const currentCaptain =
+    getCurrentCaptain(
+        startingXI
+    );
+
+
+const captainBonus =
+    currentCaptain
+        ? calculateGameweekProjection(
+            currentCaptain,
+            selectedGameweek
+        )
+        : 0;
+
+
+// Captain scores twice, so add his projection
+// one additional time.
+
+const projectedTotal =
+    baseProjectedTotal +
+    captainBonus;
 
 
         const averageRating =
