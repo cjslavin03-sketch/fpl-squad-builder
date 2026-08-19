@@ -805,7 +805,13 @@ button {
         >
             BUILD SQUAD
         </button>
-
+<button
+    id="clear-squad-btn"
+    class="generate-squad-button"
+    type="button"
+>
+    CLEAR SQUAD
+</button>
     </div>
 
 </div>
@@ -2944,7 +2950,10 @@ const generateSquadButton =
     document.getElementById(
         "generate-squad-btn"
     );
-
+const clearSquadButton =
+    document.getElementById(
+        "clear-squad-btn"
+    );
 
 // Open / close strategy menu
 
@@ -3018,6 +3027,31 @@ if (generateSquadButton) {
             buildOptimizedSquad(
                 selectedBuildStrategy
             );
+
+        }
+    );
+
+}
+if (clearSquadButton) {
+
+    clearSquadButton.addEventListener(
+        "click",
+        () => {
+
+            // Remove all squad players
+            squad.length = 0;
+
+            // Also clear locks so no hidden locked
+            // players survive the reset
+            lockedPlayerIds.clear();
+
+            // Remove saved squad from browser storage
+            localStorage.removeItem(
+                "fpl_saved_squad"
+            );
+
+            renderSquad();
+            renderPlayers();
 
         }
     );
