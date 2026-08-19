@@ -3030,14 +3030,9 @@ if (generateSquadButton) {
 function buildOptimizedSquad(strategy) {
 
     if (!players || !players.length) {
-
-        alert(
-            "FPL player data has not loaded yet."
-        );
-
+        alert("FPL player data has not loaded yet.");
         return;
     }
-
 
     // -----------------------------------------------------
     // Strategy weights
@@ -3103,27 +3098,117 @@ function buildOptimizedSquad(strategy) {
 
     };
 
-
     const selectedWeights =
-        weights[strategy] ||
-        weights.overall;
+        weights[strategy] || weights.overall;
 
 
     // -----------------------------------------------------
-    // Score players
+    // Preserve ONLY specifically locked players
     // -----------------------------------------------------
 
-    const candidates =
+    const lockedPlayers =
+        squad.filter(
+            player =>
+                lockedPlayerIds.has(
+                    Number(player.id)
+                )
+        );
+
+
+    // -----------------------------------------------------
+    // Position requirements
+    // -----------------------------------------------------
+
+    const requirements = {
+        1: 2,   // GK
+        2: 5,   // DEF
+        3: 5,   // MID
+        4: 3    // FWD
+    };
+
+
+    // -----------------------------------------------------
+    // Validate locked players
+    // -----------------------------------------------------
+
+    const lockedCounts = {
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0
+    };
+
+
+    let lockedCost = 0;
+
+    lockedPlayers.forEach(player => {
+
+        const position =
+            Number(player.element_type);
+
+        lockedCounts[position]++;
+
+        lockedCost +=
+            Number(player.now_cost);
+
+    });
+
+
+    for (const position of [1, 2, 3, 4]) {
+
+        if (
+            lockedCounts[position] >
+            requirements[position]
+        ) {
+
+            alert(
+                "You have too many locked players at one position. Unlock a player and try again."
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    if (lockedPlayers.length > 15) {
+
+        alert(
+            "You have too many locked players."
+        );
+
+        return;
+
+    }
+
+
+    if (lockedCost > 1000) {
+
+        alert(
+            "Your locked players already cost more than the £100m budget."
+        );
+
+        return;
+
+    }
+
+
+    // -----------------------------------------------------
+    // Score every player
+    // -----------------------------------------------------
+
+    const scoredPlayers =
         players.map(player => {
 
-            const a =
-                player.analytics || {};
+            const analytics =
+                calculateAnalytics(player) || {};
 
 
             const projected =
                 Number(
-                    a.projectedPoints ||
-                    a.projected ||
+                    analytics.projection ||
+                    analytics.projectedPoints ||
                     player.total_points ||
                     0
                 );
@@ -3131,29 +3216,29 @@ function buildOptimizedSquad(strategy) {
 
             const value =
                 Number(
-                    a.value ||
+                    analytics.value ||
                     0
                 );
 
 
             const minutes =
                 Number(
-                    a.minutesSecurity ||
-                    a.minutes ||
+                    analytics.minutesSecurity ||
+                    analytics.minutes ||
                     50
                 );
 
 
             const upside =
                 Number(
-                    a.upside ||
+                    analytics.upside ||
                     50
                 );
 
 
             const confidence =
                 Number(
-                    a.confidence ||
+                    analytics.confidence ||
                     50
                 );
 
@@ -3185,182 +3270,350 @@ function buildOptimizedSquad(strategy) {
 
 
     // -----------------------------------------------------
-    // Sort by strategy score
+    // Remove locked players from candidates
     // -----------------------------------------------------
 
-    candidates.sort(
-        (a, b) =>
-            b.score -
-            a.score
-    );
-
-
-// -----------------------------------------------------
-// Preserve ONLY specifically locked players
-// -----------------------------------------------------
-
-const lockedPlayers =
-    squad.filter(
-        player =>
-            lockedPlayerIds.has(
-                Number(player.id)
+    const lockedIds =
+        new Set(
+            lockedPlayers.map(
+                player =>
+                    Number(player.id)
             )
-    );
+        );
 
 
-const lockedIds =
-    new Set(
-        lockedPlayers.map(
-            p => Number(p.id)
-        )
-    );
-
-
-const newSquad =
-    [...lockedPlayers];
-
-
-
-// -----------------------------------------------------
-// Current squad cost
-// -----------------------------------------------------
-
-let totalCost =
-    newSquad.reduce(
-        (total, player) =>
-            total +
-            Number(player.now_cost),
-        0
-    );
+    const candidates =
+        scoredPlayers.filter(
+            item =>
+                !lockedIds.has(
+                    Number(item.player.id)
+                )
+        );
 
 
     // -----------------------------------------------------
-    // Position requirements
+    // Build initial legal squad
+    //
+    // We intentionally start with the cheapest legal
+    // players so the optimizer always has room to upgrade.
     // -----------------------------------------------------
 
-    const requirements = {
+    const newSquad =
+        [...lockedPlayers];
 
-        1: 2,  // GK
-        2: 5,  // DEF
-        3: 5,  // MID
-        4: 3   // FWD
-
-    };
-
-
-    // -----------------------------------------------------
-    // Current position counts
-    // -----------------------------------------------------
 
     const counts = {
-
-        1: 0,
-        2: 0,
-        3: 0,
-        4: 0
-
+        1: lockedCounts[1],
+        2: lockedCounts[2],
+        3: lockedCounts[3],
+        4: lockedCounts[4]
     };
 
 
-    newSquad.forEach(
-        player => {
+    let totalCost =
+        lockedCost;
 
-            counts[
-                player.element_type
-            ]++;
 
-        }
-    );
+    function clubCount(teamId) {
+
+        return newSquad.filter(
+            player =>
+                Number(player.team) ===
+                Number(teamId)
+        ).length;
+
+    }
 
 
     // -----------------------------------------------------
-    // Add players
+    // Fill missing positions with cheapest legal players
     // -----------------------------------------------------
 
-    for (
-        const candidate of candidates
-    ) {
+    for (const position of [1, 2, 3, 4]) {
 
-        const player =
-            candidate.player;
-
-
-        const id =
-            Number(player.id);
+        const needed =
+            requirements[position] -
+            counts[position];
 
 
-        const position =
-            Number(player.element_type);
-
-
-        const price =
-            Number(player.now_cost);
-
-
-        // Already selected
-        if (
-            lockedIds.has(id)
+        for (
+            let slot = 0;
+            slot < needed;
+            slot++
         ) {
-            continue;
-        }
+
+            const available =
+                candidates
+                    .filter(
+                        item => {
+
+                            const player =
+                                item.player;
+
+                            return (
+                                Number(player.element_type) ===
+                                    position &&
+
+                                clubCount(player.team) <
+                                    3
+                            );
+
+                        }
+                    )
+                    .sort(
+                        (a, b) =>
+                            Number(a.player.now_cost) -
+                            Number(b.player.now_cost)
+                    );
 
 
-        // Position full
-        if (
-            counts[position] >=
-            requirements[position]
-        ) {
-            continue;
-        }
+            if (!available.length) {
+
+                alert(
+                    "I couldn't build a legal squad with the available players. Try unlocking a player or refreshing the FPL data."
+                );
+
+                return;
+
+            }
 
 
-        // Club limit
-        const clubCount =
-            newSquad.filter(
-                p =>
-                    Number(p.team) ===
-                    Number(player.team)
-            ).length;
+            let added = false;
 
 
-        if (clubCount >= 3) {
-            continue;
-        }
+            for (const item of available) {
+
+                const player =
+                    item.player;
+
+                const price =
+                    Number(player.now_cost);
 
 
-        // Budget
-        if (
-            totalCost +
-            price >
-            1000
-        ) {
-            continue;
-        }
+                if (
+                    totalCost +
+                    price >
+                    1000
+                ) {
+                    continue;
+                }
 
 
-        // Add player
-        newSquad.push(player);
+                newSquad.push(player);
 
-        totalCost += price;
+                totalCost += price;
 
-        counts[position]++;
+                counts[position]++;
+
+                added = true;
+
+                break;
+
+            }
 
 
-        if (
-            newSquad.length >= 15
-        ) {
-            break;
+            if (!added) {
+
+                alert(
+                    "I couldn't fit a complete legal squad inside the £100m budget. Try unlocking a player or using a different strategy."
+                );
+
+                return;
+
+            }
+
         }
 
     }
 
 
     // -----------------------------------------------------
-    // Check whether a full squad was built
+    // Upgrade players according to selected strategy
+    // -----------------------------------------------------
+
+    let improved = true;
+
+
+    while (improved) {
+
+        improved = false;
+
+
+        const upgradeOptions = [];
+
+
+        for (const item of candidates) {
+
+            const player =
+                item.player;
+
+            const position =
+                Number(player.element_type);
+
+
+            const price =
+                Number(player.now_cost);
+
+
+            const existing =
+                newSquad
+                    .filter(
+                        p =>
+                            Number(p.element_type) ===
+                            position
+                    )
+                    .filter(
+                        p =>
+                            !lockedIds.has(
+                                Number(p.id)
+                            )
+                    )
+                    .sort(
+                        (a, b) =>
+                            Number(a.now_cost) -
+                            Number(b.now_cost)
+                    )[0];
+
+
+            if (!existing) {
+                continue;
+            }
+
+
+            const existingScoreItem =
+                scoredPlayers.find(
+                    scored =>
+                        Number(scored.player.id) ===
+                        Number(existing.id)
+                );
+
+
+            if (!existingScoreItem) {
+                continue;
+            }
+
+
+            const scoreGain =
+                item.score -
+                existingScoreItem.score;
+
+
+            const priceDifference =
+                price -
+                Number(existing.now_cost);
+
+
+            if (scoreGain <= 0) {
+                continue;
+            }
+
+
+            // Remove existing player temporarily when
+            // checking club limits.
+            const existingIndex =
+                newSquad.findIndex(
+                    p =>
+                        Number(p.id) ===
+                        Number(existing.id)
+                );
+
+
+            if (existingIndex === -1) {
+                continue;
+            }
+
+
+            const clubAlreadyHas =
+                newSquad.filter(
+                    p =>
+                        Number(p.id) !==
+                            Number(existing.id) &&
+
+                        Number(p.team) ===
+                            Number(player.team)
+                ).length;
+
+
+            if (clubAlreadyHas >= 3) {
+                continue;
+            }
+
+
+            if (
+                totalCost +
+                priceDifference >
+                1000
+            ) {
+                continue;
+            }
+
+
+            upgradeOptions.push({
+                player,
+                existing,
+                scoreGain,
+                priceDifference,
+                ratio:
+                    scoreGain /
+                    Math.max(
+                        1,
+                        Math.max(
+                            priceDifference,
+                            0.1
+                        )
+                    )
+            });
+
+        }
+
+
+        upgradeOptions.sort(
+            (a, b) =>
+                b.ratio -
+                a.ratio
+        );
+
+
+        if (upgradeOptions.length) {
+
+            const upgrade =
+                upgradeOptions[0];
+
+
+            const index =
+                newSquad.findIndex(
+                    p =>
+                        Number(p.id) ===
+                        Number(
+                            upgrade.existing.id
+                        )
+                );
+
+
+            if (index !== -1) {
+
+                newSquad[index] =
+                    upgrade.player;
+
+                totalCost +=
+                    upgrade.priceDifference;
+
+                improved = true;
+
+            }
+
+        }
+
+    }
+
+
+    // -----------------------------------------------------
+    // Final legality check
     // -----------------------------------------------------
 
     if (
-        newSquad.length < 15
+        newSquad.length !== 15 ||
+        totalCost > 1000
     ) {
 
         alert(
@@ -3368,6 +3621,54 @@ let totalCost =
         );
 
         return;
+
+    }
+
+
+    for (const position of [1, 2, 3, 4]) {
+
+        if (
+            newSquad.filter(
+                player =>
+                    Number(player.element_type) ===
+                    position
+            ).length !==
+            requirements[position]
+        ) {
+
+            alert(
+                "The generated squad failed a position check. Try again."
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    const teamCounts = {};
+
+
+    for (const player of newSquad) {
+
+        const team =
+            Number(player.team);
+
+        teamCounts[team] =
+            (teamCounts[team] || 0) + 1;
+
+
+        if (teamCounts[team] > 3) {
+
+            alert(
+                "The generated squad failed the club-limit check. Try again."
+            );
+
+            return;
+
+        }
+
     }
 
 
@@ -3377,6 +3678,7 @@ let totalCost =
 
     squad.length = 0;
 
+
     newSquad.forEach(
         player =>
             squad.push(player)
@@ -3384,7 +3686,6 @@ let totalCost =
 
 
     renderSquad();
-
     renderPlayers();
 
 
