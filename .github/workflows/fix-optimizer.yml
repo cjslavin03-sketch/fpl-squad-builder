@@ -19,7 +19,6 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import re
 
           path = Path('index.html')
           text = path.read_text(encoding='utf-8')
@@ -108,7 +107,7 @@ jobs:
 
     const newSquad = [...lockedPlayers];
 
-    // First create a guaranteed legal baseline using the cheapest eligible players.
+    // First create a legal baseline using the cheapest eligible players.
     for (const position of [1, 2, 3, 4]) {
         const needed = requirements[position] - counts[position];
         if (needed <= 0) continue;
@@ -141,7 +140,7 @@ jobs:
         }
     }
 
-    // Upgrade the baseline repeatedly while preserving every FPL rule.
+    // Upgrade the baseline while preserving every FPL rule.
     for (let pass = 0; pass < 20; pass++) {
         let bestMove = null;
         let bestGain = 0;
@@ -211,7 +210,6 @@ jobs:
     squad.length = 0;
     newSquad.forEach(player => squad.push(player));
 
-    saveSquad();
     renderSquad();
     renderPlayers();
 
@@ -224,7 +222,7 @@ jobs:
 
           text = text[:start] + new_function + text[end:]
           path.write_text(text, encoding='utf-8')
-  
+
       - name: Commit optimizer fix
         run: |
           git config user.name "github-actions[bot]"
@@ -234,3 +232,4 @@ jobs:
           git push
 
 # Trigger optimizer replacement from the connected GitHub workflow.
+# Persistence is handled by the existing squad state in the app.
