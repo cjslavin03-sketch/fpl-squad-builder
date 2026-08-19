@@ -3112,7 +3112,7 @@ const activeLockedIds =
     const lockedPlayers =
         squad.filter(
             player =>
-                activePlayerIds.has(
+                activeLockedIds.has(
                     Number(player.id)
                 )
         );
