@@ -1,0 +1,134 @@
+name: Apply Clear Squad Fix
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch index.html
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          text = path.read_text()
+
+          html_anchor = '''        <button
+            id="generate-squad-btn"
+            class="generate-squad-button"
+            type="button"
+        >
+            BUILD SQUAD
+        </button>'''
+
+          html_replacement = html_anchor + '''
+
+        <button
+            id="clear-squad-btn"
+            class="clear-squad-button"
+            type="button"
+        >
+            CLEAR SQUAD
+        </button>'''
+
+          if 'id="clear-squad-btn"' not in text:
+              if html_anchor not in text:
+                  raise SystemExit('Could not find BUILD SQUAD HTML anchor')
+              text = text.replace(html_anchor, html_replacement, 1)
+
+          js_anchor = '''const generateSquadButton =
+    document.getElementById(
+        "generate-squad-btn"
+    );'''
+
+          js_replacement = js_anchor + '''
+
+
+const clearSquadButton =
+    document.getElementById(
+        "clear-squad-btn"
+    );'''
+
+          if 'const clearSquadButton' not in text:
+              if js_anchor not in text:
+                  raise SystemExit('Could not find generateSquadButton declaration')
+              text = text.replace(js_anchor, js_replacement, 1)
+
+          listener_anchor = '''if (generateSquadButton) {
+
+    generateSquadButton.addEventListener(
+        "click",
+        () => {
+
+            buildOptimizedSquad(
+                selectedBuildStrategy
+            );
+
+        }
+    );
+
+}'''
+
+          listener_replacement = listener_anchor + '''
+
+
+// Clear all unlocked players without removing locks
+
+if (clearSquadButton) {
+
+    clearSquadButton.addEventListener(
+        "click",
+        () => {
+
+            const lockedIds =
+                new Set(lockedPlayerIds);
+
+            for (let i = squad.length - 1; i >= 0; i--) {
+
+                if (
+                    !lockedIds.has(
+                        Number(squad[i].id)
+                    )
+                ) {
+                    squad.splice(i, 1);
+                }
+
+            }
+
+            saveSquad();
+            renderSquad();
+            renderPlayers();
+
+        }
+    );
+
+}'''
+
+          if '// Clear all unlocked players without removing locks' not in text:
+              if listener_anchor not in text:
+                  raise SystemExit('Could not find BUILD SQUAD listener')
+              text = text.replace(listener_anchor, listener_replacement, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit fix and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-clear-squad-fix.yml
+          git add index.html
+          git commit -m "Add clear squad button"
+          git push
