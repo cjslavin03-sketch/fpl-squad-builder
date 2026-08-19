@@ -4900,21 +4900,233 @@ if (gameweekSelect) {
 
 
     gameweekSelect.addEventListener(
-        "change",
-        () => {
+    "change",
+    () => {
 
-            selectedGameweek =
-                Number(
-                    gameweekSelect.value
-                ) || 1;
+        selectedGameweek =
+            Number(
+                gameweekSelect.value
+            ) || 1;
 
 
-            renderSquad();
+        // Re-render pitch / bench
+        renderSquad();
 
-            renderPlayers();
+        renderPlayers();
+
+
+        // ---------------------------------------------
+        // Recalculate selected gameweek starting XI
+        // ---------------------------------------------
+
+        const goalkeepers =
+            squad
+                .filter(
+                    p =>
+                        Number(
+                            p.element_type
+                        ) === 1
+                )
+                .sort(
+                    (a, b) =>
+                        calculateGameweekProjection(
+                            b,
+                            selectedGameweek
+                        ) -
+                        calculateGameweekProjection(
+                            a,
+                            selectedGameweek
+                        )
+                );
+
+
+        const defenders =
+            squad
+                .filter(
+                    p =>
+                        Number(
+                            p.element_type
+                        ) === 2
+                )
+                .sort(
+                    (a, b) =>
+                        calculateGameweekProjection(
+                            b,
+                            selectedGameweek
+                        ) -
+                        calculateGameweekProjection(
+                            a,
+                            selectedGameweek
+                        )
+                );
+
+
+        const midfielders =
+            squad
+                .filter(
+                    p =>
+                        Number(
+                            p.element_type
+                        ) === 3
+                )
+                .sort(
+                    (a, b) =>
+                        calculateGameweekProjection(
+                            b,
+                            selectedGameweek
+                        ) -
+                        calculateGameweekProjection(
+                            a,
+                            selectedGameweek
+                        )
+                );
+
+
+        const forwards =
+            squad
+                .filter(
+                    p =>
+                        Number(
+                            p.element_type
+                        ) === 4
+                )
+                .sort(
+                    (a, b) =>
+                        calculateGameweekProjection(
+                            b,
+                            selectedGameweek
+                        ) -
+                        calculateGameweekProjection(
+                            a,
+                            selectedGameweek
+                        )
+                );
+
+
+        // ---------------------------------------------
+        // Use current formation
+        // ---------------------------------------------
+
+        let formation =
+            selectedFormation ||
+            "AUTO";
+
+
+        if (
+            formation === "AUTO"
+        ) {
+
+            formation =
+                chooseBestFormation();
 
         }
-    );
+
+
+        const parts =
+            formation
+                .split("-")
+                .map(Number);
+
+
+        const defCount =
+            parts[0];
+
+        const midCount =
+            parts[1];
+
+        const fwdCount =
+            parts[2];
+
+
+        const startingXI = [
+
+            ...goalkeepers.slice(
+                0,
+                1
+            ),
+
+            ...defenders.slice(
+                0,
+                defCount
+            ),
+
+            ...midfielders.slice(
+                0,
+                midCount
+            ),
+
+            ...forwards.slice(
+                0,
+                fwdCount
+            )
+
+        ];
+
+
+        // ---------------------------------------------
+        // Update projected points
+        // ---------------------------------------------
+
+        const projectedElement =
+            document.getElementById(
+                "projected"
+            );
+
+
+        const ratingElement =
+            document.getElementById(
+                "avg-rating"
+            );
+
+
+        const projectedTotal =
+            startingXI.reduce(
+                (sum, player) =>
+                    sum +
+                    calculateGameweekProjection(
+                        player,
+                        selectedGameweek
+                    ),
+                0
+            );
+
+
+        const averageRating =
+            startingXI.length
+                ? startingXI.reduce(
+                    (sum, player) =>
+                        sum +
+                        calculateGameweekRating(
+                            player,
+                            selectedGameweek
+                        ),
+                    0
+                ) /
+                startingXI.length
+                : 0;
+
+
+        if (
+            projectedElement
+        ) {
+
+            projectedElement.textContent =
+                projectedTotal.toFixed(1);
+
+        }
+
+
+        if (
+            ratingElement
+        ) {
+
+            ratingElement.textContent =
+                averageRating.toFixed(1);
+
+        }
+
+    }
+);
 
 }
 let selectedFormation = "AUTO";
