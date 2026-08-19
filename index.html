@@ -3328,9 +3328,13 @@ if (
     player.status === "i" ||
     player.status === "s" ||
     player.status === "u" ||
-    Number(
-        player.chance_of_playing_next_round
-    ) === 0
+    (
+        player.chance_of_playing_next_round !== null &&
+        player.chance_of_playing_next_round !== undefined &&
+        Number(
+            player.chance_of_playing_next_round
+        ) === 0
+    )
 ) {
 
     return;
