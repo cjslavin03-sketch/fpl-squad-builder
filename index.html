@@ -589,6 +589,56 @@ button {
     <div class="squad">
 
     <h2>⚽ My FPL Squad</h2>
+        <div class="gameweek-control">
+
+    <label for="gameweek-select">
+        Simulate Gameweek
+    </label>
+
+    <select id="gameweek-select">
+
+        <option value="1">GW1</option>
+        <option value="2">GW2</option>
+        <option value="3">GW3</option>
+        <option value="4">GW4</option>
+        <option value="5">GW5</option>
+        <option value="6">GW6</option>
+        <option value="7">GW7</option>
+        <option value="8">GW8</option>
+        <option value="9">GW9</option>
+        <option value="10">GW10</option>
+        <option value="11">GW11</option>
+        <option value="12">GW12</option>
+        <option value="13">GW13</option>
+        <option value="14">GW14</option>
+        <option value="15">GW15</option>
+        <option value="16">GW16</option>
+        <option value="17">GW17</option>
+        <option value="18">GW18</option>
+        <option value="19">GW19</option>
+        <option value="20">GW20</option>
+        <option value="21">GW21</option>
+        <option value="22">GW22</option>
+        <option value="23">GW23</option>
+        <option value="24">GW24</option>
+        <option value="25">GW25</option>
+        <option value="26">GW26</option>
+        <option value="27">GW27</option>
+        <option value="28">GW28</option>
+        <option value="29">GW29</option>
+        <option value="30">GW30</option>
+        <option value="31">GW31</option>
+        <option value="32">GW32</option>
+        <option value="33">GW33</option>
+        <option value="34">GW34</option>
+        <option value="35">GW35</option>
+        <option value="36">GW36</option>
+        <option value="37">GW37</option>
+        <option value="38">GW38</option>
+
+    </select>
+
+</div>
 <div class="formation-control">
 
     <label for="formation-select">
@@ -1846,7 +1896,261 @@ overall =
     };
 
 }
+// =========================================================
+// GAMEWEEK SIMULATION
+// =========================================================
 
+let selectedGameweek = 1;
+
+
+// ---------------------------------------------------------
+// Find a player's fixtures for the selected gameweek
+// ---------------------------------------------------------
+
+function getPlayerGameweekFixtures(
+    player,
+    gameweek = selectedGameweek
+) {
+
+    if (
+        !Array.isArray(fixtures) ||
+        !fixtures.length
+    ) {
+
+        return [];
+
+    }
+
+
+    const teamId =
+        Number(player.team);
+
+
+    return fixtures.filter(
+        fixture =>
+
+            Number(fixture.event) ===
+                Number(gameweek) &&
+
+            (
+                Number(fixture.team_h) ===
+                    teamId ||
+
+                Number(fixture.team_a) ===
+                    teamId
+            )
+    );
+
+}
+
+
+// ---------------------------------------------------------
+// Fixture multiplier
+//
+// Difficulty 1 = very favorable
+// Difficulty 5 = very difficult
+//
+// Fixture influence is deliberately capped so player
+// quality remains much more important than opponent.
+// ---------------------------------------------------------
+
+function getGameweekFixtureMultiplier(
+    player,
+    gameweek = selectedGameweek
+) {
+
+    const playerFixtures =
+        getPlayerGameweekFixtures(
+            player,
+            gameweek
+        );
+
+
+    // Blank gameweek
+    if (!playerFixtures.length) {
+
+        return 0;
+
+    }
+
+
+    let totalMultiplier = 0;
+
+
+    playerFixtures.forEach(
+        fixture => {
+
+            const teamId =
+                Number(player.team);
+
+
+            const isHome =
+                Number(fixture.team_h) ===
+                teamId;
+
+
+            const difficulty =
+                Number(
+                    isHome
+                        ? fixture.team_h_difficulty
+                        : fixture.team_a_difficulty
+                ) || 3;
+
+
+            let multiplier = 1;
+
+
+            if (difficulty === 1) {
+                multiplier = 1.18;
+            }
+
+            else if (difficulty === 2) {
+                multiplier = 1.10;
+            }
+
+            else if (difficulty === 3) {
+                multiplier = 1.00;
+            }
+
+            else if (difficulty === 4) {
+                multiplier = 0.92;
+            }
+
+            else if (difficulty === 5) {
+                multiplier = 0.84;
+            }
+
+
+            // Small home advantage
+
+            if (isHome) {
+
+                multiplier += 0.03;
+
+            }
+
+
+            totalMultiplier +=
+                multiplier;
+
+        }
+    );
+
+
+    // Double gameweeks naturally combine both fixtures.
+    return totalMultiplier;
+
+}
+
+
+// ---------------------------------------------------------
+// Gameweek-specific projected points
+// ---------------------------------------------------------
+
+function calculateGameweekProjection(
+    player,
+    gameweek = selectedGameweek
+) {
+
+    const analytics =
+        calculateAnalytics(player);
+
+
+    const baseProjection =
+        Number(
+            analytics.projection ||
+            0
+        );
+
+
+    const fixtureMultiplier =
+        getGameweekFixtureMultiplier(
+            player,
+            gameweek
+        );
+
+
+    if (
+        fixtureMultiplier === 0
+    ) {
+
+        return 0;
+
+    }
+
+
+    const projection =
+        baseProjection *
+        fixtureMultiplier;
+
+
+    return Number(
+        projection.toFixed(1)
+    );
+
+}
+
+
+// ---------------------------------------------------------
+// Gameweek-specific player rating
+// ---------------------------------------------------------
+
+function calculateGameweekRating(
+    player,
+    gameweek = selectedGameweek
+) {
+
+    const analytics =
+        calculateAnalytics(player);
+
+
+    const baseRating =
+        Number(
+            analytics.overall ||
+            0
+        );
+
+
+    const fixtureMultiplier =
+        getGameweekFixtureMultiplier(
+            player,
+            gameweek
+        );
+
+
+    if (
+        fixtureMultiplier === 0
+    ) {
+
+        return Math.max(
+            20,
+            baseRating * 0.40
+        );
+
+    }
+
+
+    // Rating moves less dramatically than projected points.
+
+    const ratingAdjustment =
+        (
+            fixtureMultiplier -
+            1
+        ) * 35;
+
+
+    return Number(
+        Math.max(
+            20,
+            Math.min(
+                99,
+                baseRating +
+                ratingAdjustment
+            )
+        ).toFixed(1)
+    );
+
+}
 /* =========================================================
    RENDER PLAYERS
 ========================================================= */
@@ -3606,10 +3910,10 @@ function buildOptimizedSquad(strategy) {
 
 
         const projection =
-            Number(
-                a.projection ||
-                0
-            );
+    calculateGameweekProjection(
+        player,
+        selectedGameweek
+    );
 
 
         const projectionScore =
@@ -4518,7 +4822,38 @@ function buildOptimizedSquad(strategy) {
 // =========================================================
 // FORMATION SELECTOR
 // =========================================================
+const gameweekSelect =
+    document.getElementById(
+        "gameweek-select"
+    );
 
+
+if (gameweekSelect) {
+
+    selectedGameweek =
+        Number(
+            gameweekSelect.value
+        ) || 1;
+
+
+    gameweekSelect.addEventListener(
+        "change",
+        () => {
+
+            selectedGameweek =
+                Number(
+                    gameweekSelect.value
+                ) || 1;
+
+
+            renderSquad();
+
+            renderPlayers();
+
+        }
+    );
+
+}
 let selectedFormation = "AUTO";
 
 
