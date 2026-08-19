@@ -1,4 +1,4 @@
-updatesquaf<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -63,6 +63,18 @@ input,
 select,
 button {
     font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 3px solid #00a95c;
+    outline-offset: 2px;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
 }
 
 input,
@@ -678,7 +690,7 @@ button {
 
 <div class="container">
 
-    <div id="status" class="status">
+    <div id="status" class="status" role="status" aria-live="polite">
         ⏳ Loading live FPL data...
     </div>
 
@@ -1003,11 +1015,12 @@ button {
     <input
         id="search"
         type="text"
+        aria-label="Search players"
         placeholder="Search players..."
         autocomplete="off"
     >
 
-    <select id="sort">
+    <select id="sort" aria-label="Sort players">
 
         <option value="overall">Overall</option>
 
@@ -1025,23 +1038,25 @@ button {
 
         <button
             class="active"
+            type="button"
+            aria-pressed="true"
             data-position="ALL">
             Recommended
         </button>
 
-        <button data-position="GK">
+        <button data-position="GK" type="button" aria-pressed="false">
             GK
         </button>
 
-        <button data-position="DEF">
+        <button data-position="DEF" type="button" aria-pressed="false">
             DEF
         </button>
 
-        <button data-position="MID">
+        <button data-position="MID" type="button" aria-pressed="false">
             MID
         </button>
 
-        <button data-position="FWD">
+        <button data-position="FWD" type="button" aria-pressed="false">
             FWD
         </button>
 
@@ -1068,6 +1083,7 @@ const WORKER_URL =
 let players = [];
 let teams = [];
 let fixtures = [];
+let fixturesLoaded = false;
 let squad = [];
 let lockedPlayerIds = new Set();
 function updateSquadStats() {
@@ -1227,9 +1243,12 @@ async function loadFPL() {
                         ? fixtureData
                         : [];
 
+                fixturesLoaded = true;
+
             } else {
 
                 fixtures = [];
+                fixturesLoaded = false;
 
             }
 
@@ -1241,11 +1260,12 @@ async function loadFPL() {
             );
 
             fixtures = [];
+            fixturesLoaded = false;
 
         }
 
 
-        status.innerHTML =
+        status.textContent =
             "✅ Loaded " +
             players.length +
             " players + " +
@@ -1262,7 +1282,7 @@ loadSavedSquad();
 
         console.error(error);
 
-        status.innerHTML =
+        status.textContent =
             "⚠️ Could not load live FPL data. " +
             error.message;
 
@@ -1313,6 +1333,17 @@ function num(value) {
     return Number.isFinite(n)
         ? n
         : 0;
+
+}
+
+function escapeHTML(value) {
+
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 
 }
 
@@ -2092,6 +2123,12 @@ function getGameweekFixtureMultiplier(
     gameweek = selectedGameweek
 ) {
 
+    // A failed fixture request is not a blank gameweek. Keep the
+    // unweighted projection until fixture data becomes available.
+    if (!fixturesLoaded) {
+        return 1;
+    }
+
     const playerFixtures =
         getPlayerGameweekFixtures(
             player,
@@ -2848,14 +2885,14 @@ const locked =
                 <div>
 
                     <h3>
-                        ${player.first_name}
-                        ${player.second_name}
+                        ${escapeHTML(player.first_name)}
+                        ${escapeHTML(player.second_name)}
                     </h3>
 
                     <div class="position">
                         ${position}
                         •
-                        ${getTeamName(player.team)}
+                        ${escapeHTML(getTeamName(player.team))}
                     </div>
 
                 </div>
@@ -2908,7 +2945,7 @@ ${
 ${
     player.news
         ? "<br><small>" +
-          player.news +
+          escapeHTML(player.news) +
           "</small>"
         : ""
 }
@@ -2989,7 +3026,7 @@ ${
 
             <button
                 class="${selected ? "remove" : "add"}"
-                onclick="togglePlayer(${player.id})"
+                type="button"
             >
 
                 ${
@@ -3001,7 +3038,7 @@ ${
             </button>
 <button
     class="lock-player-button"
-    onclick="togglePlayerLock(${player.id})"
+    type="button"
 >
     ${
         locked
@@ -3013,7 +3050,10 @@ ${
 
 
         const squadButton =
-            card.querySelector("button");
+            card.querySelector(".add, .remove");
+
+        const lockButton =
+            card.querySelector(".lock-player-button");
 
 
         if (squadButton) {
@@ -3044,6 +3084,15 @@ ${
 
         }
 
+        if (lockButton) {
+
+            lockButton.addEventListener(
+                "click",
+                () => togglePlayerLock(player.id)
+            );
+
+        }
+
 
         container.appendChild(card);
 
@@ -3051,173 +3100,6 @@ ${
 
 }
 
-
-/* =========================================================
-   SQUAD BUILDER
-========================================================= */
-
-function togglePlayer(playerId) {
-
-    const player =
-        players.find(
-            p => p.id === playerId
-        );
-
-    if (!player) return;
-
-
-    const existingIndex =
-        squad.findIndex(
-            p => p.id === playerId
-        );
-
-
-    /* ---------------------------------------------
-       REMOVE
-    --------------------------------------------- */
-
-    if (existingIndex !== -1) {
-
-        squad.splice(
-            existingIndex,
-            1
-        );
-
-        renderSquad();
-        renderPlayers();
-
-        return;
-
-    }
-
-
-    /* ---------------------------------------------
-       MAX 15 PLAYERS
-    --------------------------------------------- */
-
-    if (squad.length >= 15) {
-
-        alert(
-            "Your squad already has 15 players."
-        );
-
-        return;
-
-    }
-
-
-    /* ---------------------------------------------
-       MAX 3 PLAYERS PER CLUB
-    --------------------------------------------- */
-
-    const sameTeam =
-        squad.filter(
-            p => p.team === player.team
-        ).length;
-
-
-    if (sameTeam >= 3) {
-
-        alert(
-            "You can only have 3 players from the same club."
-        );
-
-        return;
-
-    }
-
-
-    /* ---------------------------------------------
-       POSITION LIMITS
-    --------------------------------------------- */
-
-    const position =
-        positions[player.element_type];
-
-
-    const positionCounts =
-        getPositionCounts();
-
-
-    const limits = {
-
-        GK: 2,
-        DEF: 5,
-        MID: 5,
-        FWD: 3
-
-    };
-
-
-    if (
-        positionCounts[position] >=
-        limits[position]
-    ) {
-
-        alert(
-            `You can only have ${limits[position]} ${position} players.`
-        );
-
-        return;
-
-    }
-
-
-    /* ---------------------------------------------
-       BUDGET
-    --------------------------------------------- */
-
-    const currentCost =
-        squad.reduce(
-            (sum, p) =>
-                sum + getPrice(p),
-            0
-        );
-
-
-    if (
-        currentCost +
-        getPrice(player) >
-        100
-    ) {
-
-        alert(
-            "That player would put you over the £100m budget."
-        );
-
-        return;
-
-    }
-
-
-    squad.push(player);
-
-    renderSquad();
-    renderPlayers();
-
-}
-function togglePlayerLock(playerId) {
-
-    const id =
-        Number(playerId);
-
-
-    if (
-        lockedPlayerIds.has(id)
-    ) {
-
-        lockedPlayerIds.delete(id);
-
-    } else {
-
-        lockedPlayerIds.add(id);
-
-    }
-
-
-    renderPlayers();
-
-}
 
 /* =========================================================
    POSITION COUNTS
@@ -3250,131 +3132,6 @@ function getPositionCounts() {
 
 
     return counts;
-
-}
-
-
-/* =========================================================
-   RENDER SQUAD
-========================================================= */
-
-function renderSquad() {
-
-    const container =
-        document.getElementById("squad");
-
-
-    const budgetElement =
-        document.getElementById("budget");
-
-    const countElement =
-        document.getElementById("player-count");
-
-    const projectedElement =
-        document.getElementById("projected");
-
-    const ratingElement =
-        document.getElementById("avg-rating");
-
-
-    const totalCost =
-        squad.reduce(
-            (sum, player) =>
-                sum + getPrice(player),
-            0
-        );
-
-
-    const remaining =
-        100 - totalCost;
-
-
-    const projected =
-        squad.reduce(
-            (sum, player) =>
-                sum +
-                calculateAnalytics(player)
-                    .projection,
-            0
-        );
-
-
-    const averageRating =
-        squad.length
-        ? squad.reduce(
-            (sum, player) =>
-                sum +
-                calculateAnalytics(player)
-                    .overall,
-            0
-        ) / squad.length
-        : 0;
-
-
-    budgetElement.textContent =
-        "£" +
-        remaining.toFixed(1) +
-        "m";
-
-
-    countElement.textContent =
-        squad.length +
-        " / 15";
-
-
-    projectedElement.textContent =
-        projected.toFixed(1);
-
-
-    ratingElement.textContent =
-        averageRating.toFixed(1);
-
-
-    container.innerHTML = "";
-
-
-    if (!squad.length) {
-
-        container.innerHTML =
-            "<p>No players selected yet.</p>";
-
-        return;
-
-    }
-
-
-    squad.forEach(player => {
-
-        const row =
-            document.createElement("div");
-
-        row.className =
-            "squad-player";
-
-
-        row.innerHTML = `
-
-            <span>
-
-                ${player.first_name}
-                ${player.second_name}
-
-                <small>
-                    (${positions[player.element_type]})
-                </small>
-
-            </span>
-
-            <strong>
-                £${getPrice(player).toFixed(1)}m
-            </strong>
-
-        `;
-
-
-        container.appendChild(row);
-
-    });
 
 }
 
@@ -3422,14 +3179,25 @@ document
                         ".filter-buttons button"
                     )
                     .forEach(btn =>
+                    {
                         btn.classList.remove(
                             "active"
-                        )
+                        );
+                        btn.setAttribute(
+                            "aria-pressed",
+                            "false"
+                        );
+                    }
                     );
 
 
                 button.classList.add(
                     "active"
+                );
+
+                button.setAttribute(
+                    "aria-pressed",
+                    "true"
                 );
 
 
@@ -3681,9 +3449,20 @@ function renderSquad() {
     // -----------------------------------------------------
 
     const benchPlayers =
-        squad.filter(
-            p => !starterIds.has(p.id)
-        );
+        squad
+            .filter(
+                p => !starterIds.has(p.id)
+            )
+            .sort((a, b) => {
+                const aIsGoalkeeper = Number(a.element_type) === 1;
+                const bIsGoalkeeper = Number(b.element_type) === 1;
+
+                if (aIsGoalkeeper !== bIsGoalkeeper) {
+                    return aIsGoalkeeper ? -1 : 1;
+                }
+
+                return sortByProjectedPoints(a, b);
+            });
 
 
     if (!benchPlayers.length) {
@@ -4266,10 +4045,18 @@ saveSquad();
 
 function saveSquad() {
 
-    localStorage.setItem(
-        "fpl_saved_squad",
-        JSON.stringify(squad)
-    );
+    try {
+
+        localStorage.setItem(
+            "fpl_saved_squad",
+            JSON.stringify(squad)
+        );
+
+    } catch (error) {
+
+        console.warn("Could not save squad:", error);
+
+    }
 
 }
 
@@ -4453,9 +4240,13 @@ if (clearSquadButton) {
             lockedPlayerIds.clear();
 
             // Remove saved squad from browser storage
-            localStorage.removeItem(
-                "fpl_saved_squad"
-            );
+            try {
+                localStorage.removeItem(
+                    "fpl_saved_squad"
+                );
+            } catch (error) {
+                console.warn("Could not clear saved squad:", error);
+            }
 
             renderSquad();
             renderPlayers();
@@ -6010,10 +5801,9 @@ function getBestPositionScore(
             )
             .map(
                 player =>
-                    Number(
-                        player.analytics?.projectedPoints ||
-                        player.total_points ||
-                        0
+                    calculateGameweekProjection(
+                        player,
+                        selectedGameweek
                     )
             )
             .sort(
