@@ -3030,13 +3030,8 @@ if (generateSquadButton) {
 function buildOptimizedSquad(strategy) {
 
     if (!players || !players.length) {
-
-        alert(
-            "FPL player data has not loaded yet."
-        );
-
+        alert("FPL player data has not loaded yet.");
         return;
-
     }
 
 
@@ -3111,7 +3106,7 @@ function buildOptimizedSquad(strategy) {
 
 
     // =====================================================
-    // PRESERVE ONLY LOCKED PLAYERS
+    // LOCKED PLAYERS ONLY
     // =====================================================
 
     const lockedPlayers =
@@ -3123,8 +3118,100 @@ function buildOptimizedSquad(strategy) {
         );
 
 
+    const lockedIds =
+        new Set(
+            lockedPlayers.map(
+                player =>
+                    Number(player.id)
+            )
+        );
+
+
     // =====================================================
-    // SCORE PLAYERS
+    // REQUIREMENTS
+    // =====================================================
+
+    const requirements = {
+        1: 2,
+        2: 5,
+        3: 5,
+        4: 3
+    };
+
+
+    const counts = {
+        1: 0,
+        2: 0,
+        3: 0,
+        4: 0
+    };
+
+
+    const clubCounts = {};
+
+
+    let totalCost = 0;
+
+
+    lockedPlayers.forEach(player => {
+
+        const position =
+            Number(player.element_type);
+
+        const club =
+            Number(player.team);
+
+        counts[position]++;
+
+        clubCounts[club] =
+            (clubCounts[club] || 0) + 1;
+
+        totalCost +=
+            Number(player.now_cost || 0);
+
+    });
+
+
+    // =====================================================
+    // VALIDATE LOCKED PLAYERS
+    // =====================================================
+
+    for (const position of [1, 2, 3, 4]) {
+
+        if (
+            counts[position] >
+            requirements[position]
+        ) {
+
+            alert(
+                "You have too many locked players at one position."
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    if (
+        totalCost > 1000 ||
+        Object.values(clubCounts).some(
+            count => count > 3
+        )
+    ) {
+
+        alert(
+            "Your locked players make a legal £100m squad impossible."
+        );
+
+        return;
+
+    }
+
+
+    // =====================================================
+    // SCORE UNIQUE PLAYERS
     // =====================================================
 
     const seenIds =
@@ -3134,267 +3221,312 @@ function buildOptimizedSquad(strategy) {
         [];
 
 
-    players.forEach(
-        player => {
+    players.forEach(player => {
 
-            const id =
-                Number(player.id);
+        const id =
+            Number(player.id);
+
+        if (
+            seenIds.has(id) ||
+            lockedIds.has(id)
+        ) {
+            return;
+        }
+
+        seenIds.add(id);
 
 
-            // Prevent duplicate player records
-            if (
-                seenIds.has(id)
-            ) {
+        const analytics =
+            calculateAnalytics(player) || {};
 
-                return;
 
+        const projected =
+            Number(
+                analytics.projection ??
+                analytics.projectedPoints ??
+                player.total_points ??
+                0
+            );
+
+
+        const value =
+            Number(
+                analytics.valueScore ??
+                analytics.value ??
+                0
+            );
+
+
+        const minutes =
+            Number(
+                analytics.minutesScore ??
+                analytics.minutesSecurity ??
+                analytics.minutes ??
+                50
+            );
+
+
+        const upside =
+            Number(
+                analytics.upside ??
+                50
+            );
+
+
+        const confidence =
+            Number(
+                analytics.confidence ??
+                50
+            );
+
+
+        const ownership =
+            Number(
+                player.selected_by_percent ??
+                50
+            );
+
+
+        const position =
+            Number(player.element_type);
+
+
+        let attackBonus = 0;
+
+        if (strategy === "attack") {
+
+            if (position === 3) {
+                attackBonus = 10;
             }
 
-
-            seenIds.add(id);
-
-
-            const analytics =
-                player.analytics ||
-                {};
-
-
-            const projected =
-                Number(
-                    analytics.projectedPoints ??
-                    analytics.projected ??
-                    player.total_points ??
-                    0
-                );
-
-
-            const value =
-                Number(
-                    analytics.valueScore ??
-                    analytics.value ??
-                    0
-                );
-
-
-            const minutes =
-                Number(
-                    analytics.minutesScore ??
-                    analytics.minutesSecurity ??
-                    analytics.minutes ??
-                    50
-                );
-
-
-            const upside =
-                Number(
-                    analytics.upside ??
-                    50
-                );
-
-
-            const confidence =
-                Number(
-                    analytics.confidence ??
-                    50
-                );
-
-
-            const ownership =
-                Number(
-                    analytics.ownership ??
-                    player.selected_by_percent ??
-                    50
-                );
-
-
-            const position =
-                Number(
-                    player.element_type
-                );
-
-
-            // -------------------------------------------------
-            // Attack bonus
-            // -------------------------------------------------
-
-            let attackBonus = 0;
-
-
-            if (
-                strategy === "attack"
-            ) {
-
-                if (
-                    position === 3
-                ) {
-
-                    attackBonus = 12;
-
-                }
-
-                else if (
-                    position === 4
-                ) {
-
-                    attackBonus = 20;
-
-                }
-
+            if (position === 4) {
+                attackBonus = 16;
             }
-
-
-            // -------------------------------------------------
-            // Differential bonus
-            // -------------------------------------------------
-
-            let differentialBonus = 0;
-
-
-            if (
-                strategy === "differential"
-            ) {
-
-                differentialBonus =
-                    Math.max(
-                        0,
-                        100 - ownership
-                    ) * 0.18;
-
-            }
-
-
-            // -------------------------------------------------
-            // Final strategy score
-            // -------------------------------------------------
-
-            const score =
-
-                projected *
-                    selectedWeights.projected +
-
-                value *
-                    selectedWeights.value +
-
-                minutes *
-                    selectedWeights.minutes +
-
-                upside *
-                    selectedWeights.upside +
-
-                confidence *
-                    selectedWeights.confidence +
-
-                attackBonus +
-
-                differentialBonus;
-
-
-            candidates.push({
-
-                player,
-                score
-
-            });
 
         }
-    );
 
 
-    // Highest score first
+        let differentialBonus = 0;
 
-    candidates.sort(
-        (a, b) =>
-            b.score -
-            a.score
-    );
+        if (strategy === "differential") {
 
+            differentialBonus =
+                Math.max(
+                    0,
+                    100 - ownership
+                ) * 0.18;
 
-    // =====================================================
-    // START WITH LOCKED PLAYERS ONLY
-    // =====================================================
-
-    const newSquad =
-        [
-            ...lockedPlayers
-        ];
+        }
 
 
-    let totalCost =
-        newSquad.reduce(
-            (total, player) =>
-                total +
+        const score =
+
+            projected *
+                selectedWeights.projected +
+
+            value *
+                selectedWeights.value +
+
+            minutes *
+                selectedWeights.minutes +
+
+            upside *
+                selectedWeights.upside +
+
+            confidence *
+                selectedWeights.confidence +
+
+            attackBonus +
+
+            differentialBonus;
+
+
+        candidates.push({
+
+            player,
+            score,
+            price:
                 Number(
                     player.now_cost ||
                     0
-                ),
-            0
+                )
+
+        });
+
+    });
+
+
+    // =====================================================
+    // HELPERS
+    // =====================================================
+
+    const newSquad =
+        [...lockedPlayers];
+
+
+    function isAlreadySelected(playerId) {
+
+        return newSquad.some(
+            player =>
+                Number(player.id) ===
+                Number(playerId)
         );
 
+    }
+
+
+    function currentClubCount(teamId) {
+
+        return clubCounts[
+            Number(teamId)
+        ] || 0;
+
+    }
+
+
+    function getRemainingRequirements() {
+
+        return {
+
+            1:
+                requirements[1] -
+                counts[1],
+
+            2:
+                requirements[2] -
+                counts[2],
+
+            3:
+                requirements[3] -
+                counts[3],
+
+            4:
+                requirements[4] -
+                counts[4]
+
+        };
+
+    }
+
 
     // =====================================================
-    // POSITION REQUIREMENTS
+    // CALCULATE MINIMUM COST REQUIRED TO FINISH
     // =====================================================
 
-    const requirements = {
+    function minimumRemainingCost(
+        excludedPlayerId = null
+    ) {
 
-        1: 2,   // GK
-        2: 5,   // DEF
-        3: 5,   // MID
-        4: 3    // FWD
-
-    };
+        const remaining =
+            getRemainingRequirements();
 
 
-    const counts = {
-
-        1: 0,
-        2: 0,
-        3: 0,
-        4: 0
-
-    };
+        let minimumCost = 0;
 
 
-    const clubCounts =
-        {};
+        for (
+            const position of
+            [1, 2, 3, 4]
+        ) {
+
+            const needed =
+                remaining[position];
 
 
-    // Count locked players
-
-    newSquad.forEach(
-        player => {
-
-            const position =
-                Number(
-                    player.element_type
-                );
+            if (needed <= 0) {
+                continue;
+            }
 
 
-            const club =
-                Number(
-                    player.team
-                );
+            const legalPlayers =
+                candidates
+                    .filter(candidate => {
+
+                        const player =
+                            candidate.player;
+
+                        const id =
+                            Number(player.id);
+
+                        const club =
+                            Number(player.team);
 
 
-            counts[position] =
-                (
-                    counts[position] ||
-                    0
-                ) + 1;
+                        if (
+                            id ===
+                            Number(excludedPlayerId)
+                        ) {
+                            return false;
+                        }
 
 
-            clubCounts[club] =
-                (
-                    clubCounts[club] ||
-                    0
-                ) + 1;
+                        if (
+                            isAlreadySelected(id)
+                        ) {
+                            return false;
+                        }
+
+
+                        if (
+                            Number(
+                                player.element_type
+                            ) !== position
+                        ) {
+                            return false;
+                        }
+
+
+                        if (
+                            currentClubCount(club) >=
+                            3
+                        ) {
+                            return false;
+                        }
+
+
+                        return true;
+
+                    })
+                    .sort(
+                        (a, b) =>
+                            a.price -
+                            b.price
+                    );
+
+
+            if (
+                legalPlayers.length <
+                needed
+            ) {
+
+                return Infinity;
+
+            }
+
+
+            minimumCost +=
+                legalPlayers
+                    .slice(
+                        0,
+                        needed
+                    )
+                    .reduce(
+                        (sum, candidate) =>
+                            sum +
+                            candidate.price,
+                        0
+                    );
 
         }
-    );
+
+
+        return minimumCost;
+
+    }
 
 
     // =====================================================
-    // BUILD FRESH SQUAD
+    // BUILD SQUAD WHILE RESERVING FUTURE BUDGET
     // =====================================================
 
     while (
@@ -3418,21 +3550,12 @@ function buildOptimizedSquad(strategy) {
 
 
             const id =
-                Number(
-                    player.id
-                );
+                Number(player.id);
 
 
             const position =
                 Number(
                     player.element_type
-                );
-
-
-            const price =
-                Number(
-                    player.now_cost ||
-                    0
                 );
 
 
@@ -3442,71 +3565,90 @@ function buildOptimizedSquad(strategy) {
                 );
 
 
-            // -------------------------------------------------
-            // NEVER DUPLICATE A PLAYER
-            // -------------------------------------------------
+            const price =
+                candidate.price;
+
 
             if (
-                newSquad.some(
-                    p =>
-                        Number(p.id) ===
-                        id
-                )
+                isAlreadySelected(id)
             ) {
-
                 continue;
-
             }
 
-
-            // -------------------------------------------------
-            // POSITION LIMIT
-            // -------------------------------------------------
 
             if (
                 counts[position] >=
                 requirements[position]
             ) {
-
                 continue;
-
             }
 
-
-            // -------------------------------------------------
-            // CLUB LIMIT
-            // -------------------------------------------------
 
             if (
-                (
-                    clubCounts[club] ||
-                    0
-                ) >= 3
+                currentClubCount(club) >=
+                3
             ) {
-
                 continue;
-
             }
 
-
-            // -------------------------------------------------
-            // BUDGET
-            // -------------------------------------------------
 
             if (
                 totalCost +
                 price >
                 1000
             ) {
+                continue;
+            }
+
+
+            // Temporarily add this player
+            // so we can calculate the minimum
+            // money needed for the remaining slots.
+
+            newSquad.push(player);
+
+            counts[position]++;
+
+            clubCounts[club] =
+                currentClubCount(club) + 1;
+
+
+            const minimumNeeded =
+                minimumRemainingCost();
+
+
+            // Undo temporary addition.
+
+            newSquad.pop();
+
+            counts[position]--;
+
+            clubCounts[club]--;
+
+            if (
+                clubCounts[club] === 0
+            ) {
+                delete clubCounts[club];
+            }
+
+
+            const moneyAfterPick =
+                1000 -
+                (
+                    totalCost +
+                    price
+                );
+
+
+            if (
+                minimumNeeded >
+                moneyAfterPick
+            ) {
 
                 continue;
 
             }
 
-
-            // -------------------------------------------------
-            // BEST AVAILABLE PLAYER
-            // -------------------------------------------------
 
             if (
                 candidate.score >
@@ -3524,13 +3666,15 @@ function buildOptimizedSquad(strategy) {
         }
 
 
-        // No legal player available
-
         if (
             !bestCandidate
         ) {
 
-            break;
+            alert(
+                "I couldn't build a complete legal squad with the current locked players and £100m budget."
+            );
+
+            return;
 
         }
 
@@ -3552,10 +3696,7 @@ function buildOptimizedSquad(strategy) {
 
 
         const price =
-            Number(
-                player.now_cost ||
-                0
-            );
+            bestCandidate.price;
 
 
         newSquad.push(
@@ -3563,37 +3704,81 @@ function buildOptimizedSquad(strategy) {
         );
 
 
-        totalCost +=
-            price;
-
-
-        counts[position] =
-            (
-                counts[position] ||
-                0
-            ) + 1;
+        counts[position]++;
 
 
         clubCounts[club] =
-            (
-                clubCounts[club] ||
-                0
-            ) + 1;
+            currentClubCount(club) + 1;
+
+
+        totalCost +=
+            price;
 
     }
 
 
     // =====================================================
-    // MAKE SURE SQUAD IS LEGAL
+    // FINAL VALIDATION
     // =====================================================
 
+    const uniqueIds =
+        new Set(
+            newSquad.map(
+                player =>
+                    Number(player.id)
+            )
+        );
+
+
     if (
-        newSquad.length <
-        15
+        uniqueIds.size !== 15
     ) {
 
         alert(
-            "I couldn't build a complete legal squad with the current locked players and £100m budget. Try unlocking a player or using a different strategy."
+            "The optimizer accidentally selected a duplicate player."
+        );
+
+        return;
+
+    }
+
+
+    for (
+        const position of
+        [1, 2, 3, 4]
+    ) {
+
+        const positionCount =
+            newSquad.filter(
+                player =>
+                    Number(
+                        player.element_type
+                    ) === position
+            ).length;
+
+
+        if (
+            positionCount !==
+            requirements[position]
+        ) {
+
+            alert(
+                "The optimizer failed the position rules."
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    if (
+        totalCost > 1000
+    ) {
+
+        alert(
+            "The optimizer exceeded the £100m budget."
         );
 
         return;
@@ -3602,7 +3787,7 @@ function buildOptimizedSquad(strategy) {
 
 
     // =====================================================
-    // REPLACE OLD GENERATED SQUAD
+    // REPLACE OLD SQUAD
     // =====================================================
 
     squad.length = 0;
@@ -3610,24 +3795,16 @@ function buildOptimizedSquad(strategy) {
 
     newSquad.forEach(
         player =>
-            squad.push(
-                player
-            )
+            squad.push(player)
     );
 
 
-    // =====================================================
-    // REFRESH UI
-    // =====================================================
+    saveSquad?.();
 
     renderSquad();
 
     renderPlayers();
 
-
-    // =====================================================
-    // SCROLL BACK TO SQUAD
-    // =====================================================
 
     const squadElement =
         document.querySelector(
@@ -3635,9 +3812,7 @@ function buildOptimizedSquad(strategy) {
         );
 
 
-    if (
-        squadElement
-    ) {
+    if (squadElement) {
 
         squadElement.scrollIntoView({
 
