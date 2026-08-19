@@ -1681,35 +1681,44 @@ function calculateAnalytics(player) {
     // Expensive players must actually justify the price.
     // =====================================================
 
-    let valueScore = 0;
+    let valueScore = 50;
 
 
-    if (
-        price > 0 &&
-        projection > 0
-    ) {
+if (
+    price > 0 &&
+    projection > 0
+) {
 
-        const projectedPerMillion =
-            projection /
-            price;
+    const projectedPerMillion =
+        projection /
+        price;
 
 
-        valueScore =
-            projectedPerMillion *
-            100;
-
-    }
-
+    // Recalibrated so good premium players
+    // are not punished too harshly for price.
+    //
+    // Rough guide:
+    // elite value      = 85–95
+    // strong value     = 75–85
+    // average value    = 60–75
+    // weak value       = below 60
 
     valueScore =
-        Math.max(
-            0,
-            Math.min(
-                100,
-                valueScore
-            )
-        );
+        40 +
+        projectedPerMillion *
+        55;
 
+}
+
+
+valueScore =
+    Math.max(
+        20,
+        Math.min(
+            98,
+            valueScore
+        )
+    );
 
     // =====================================================
     // DIFFERENTIAL
@@ -1738,32 +1747,44 @@ function calculateAnalytics(player) {
     // =====================================================
 
     const projectionScore =
+    Math.min(
+        100,
+        (
+            projection /
+            7
+        ) * 100
+    );
+
+
+const rawOverall =
+    projectionScore * 0.50 +
+    valueScore * 0.12 +
+    minutesScore * 0.14 +
+    upside * 0.14 +
+    confidence * 0.10;
+
+
+// Recalibrate the display scale.
+//
+// This does NOT change the underlying player data.
+// It changes how the combined score maps onto 0–100.
+//
+// Strong FPL picks should generally live in the 80s,
+// while elite picks can reach the 90s.
+
+let overall =
+    35 +
+    rawOverall * 0.65;
+
+
+overall =
+    Math.max(
+        25,
         Math.min(
-            100,
-            (
-                projection /
-                8
-            ) * 100
-        );
-
-
-    let overall =
-        projectionScore * 0.45 +
-        valueScore * 0.15 +
-        minutesScore * 0.15 +
-        upside * 0.15 +
-        confidence * 0.10;
-
-
-    overall =
-        Math.max(
-            0,
-            Math.min(
-                99,
-                overall
-            )
-        );
-
+            99,
+            overall
+        )
+    );
 
     // =====================================================
     // RETURN
