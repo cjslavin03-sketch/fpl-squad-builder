@@ -1554,20 +1554,48 @@ function calculateAnalytics(player) {
                 100
             ) * 1.20;
 
-    } else {
+ } else {
 
-        // Before meaningful current-season data exists,
-        // remain conservative rather than inventing
-        // superstar projections.
+    // Pre-GW1 / limited-current-season fallback.
+    // FPL current-season stats can be empty before
+    // meaningful competitive data exists, so use
+    // price, ownership, attacking profile and
+    // availability as conservative predictive signals.
 
-        baseProjection =
-            3.0 +
-            (
-                attackingScore /
-                100
-            ) * 1.40;
+    const priceSignal =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                (price - 4) / 11
+            )
+        );
 
-    }
+    const ownershipSignal =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                ownership / 50
+            )
+        );
+
+    const attackSignal =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                attackingScore / 100
+            )
+        );
+
+    baseProjection =
+        3.8 +
+        priceSignal * 2.1 +
+        ownershipSignal * 0.7 +
+        attackSignal * 0.9;
+
+}
 
 
     // Defensive FPL production can matter without
