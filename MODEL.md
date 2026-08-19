@@ -28,8 +28,9 @@ single-page builder and its public rendering functions.
 
 ## Preseason bridge
 
-The live worker does not currently guarantee a historical player snapshot. The
-app therefore accepts competitive history either in `previous_season_elements`
+The worker supplies a cached previous-season competitive snapshot for current
+players where a genuine historical record can be matched. The app accepts that
+history either in `previous_season_elements`
 or on a player's `previous_season` property, matched by stable player code where
 possible. It never invents missing historical statistics.
 
@@ -42,10 +43,20 @@ independent event model and fades linearly to zero by 720 current-season
 minutes. Current injury availability and selected-fixture adjustments are
 applied after selecting either prior path.
 
+## Display ratings
+
+The `/100` Overall, Value, Minutes Security, Upside and Confidence figures are
+presentation scores, not additional prediction inputs. Overall uses a
+piecewise calibration of the independent expected-points mean (94% weight),
+with replacement value limited to a modest 6% contribution. The other display
+figures translate their corresponding model output onto intuitive bounded
+scales. None of these ratings feeds the projection model, captaincy logic or
+optimizer objective.
+
 ## Deliberately deferred sections
 
-- Supplying and versioning the historical-prior snapshot at the worker. The
-  browser-side schema and automatic current-season transition are implemented.
+- Pinning a first-party historical snapshot rather than retrieving the
+  season-versioned public dataset through the worker cache.
 - A calibrated team-strength model and count-distribution simulation for exact
   clean-sheet, save-threshold and bonus points.
 - Scenario-exact FPL autosub evaluation.

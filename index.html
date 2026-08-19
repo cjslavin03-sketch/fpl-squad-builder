@@ -1283,7 +1283,6 @@ async function loadFPL() {
 
         }
 
-
         status.textContent =
             "✅ Loaded " +
             players.length +
@@ -1448,13 +1447,10 @@ function calculateAnalytics(player) {
     const pointsAboveReplacement = projection.mean - replacementPoints;
     const valueAboveReplacement = pointsAboveReplacement /
         Math.max(0.5, price - replacementPrice);
-    const valueScore = Math.max(0, Math.min(100, 50 + valueAboveReplacement * 18));
-    const minutesScore = Math.max(0, Math.min(100, projection.expectedMinutes / 0.9));
-    const upside = Math.max(0, Math.min(100, projection.ceiling / 0.12));
-    const confidence = Math.max(5, Math.min(98,
-        35 + Math.min(45, num(player.minutes) / 20) + projection.availability * 18
-    ));
-    const projectionScore = Math.max(0, Math.min(100, projection.mean / 0.07));
+    const displayRatings = FPLModel.displayRatings(projection, {
+        valueAboveReplacement,
+        seasonMinutes: num(player.minutes)
+    });
 
     return {
         projection: Number(projection.mean.toFixed(1)),
@@ -1463,16 +1459,16 @@ function calculateAnalytics(player) {
         haulProbability: Number((projection.haulProbability * 100).toFixed(1)),
         expectedMinutes: Number(projection.expectedMinutes.toFixed(0)),
         nonAppearanceProbability: Number((projection.pZero * 100).toFixed(1)),
-        valueScore: Number(valueScore.toFixed(1)),
+        valueScore: displayRatings.valueScore,
         pointsAboveReplacement: Number(pointsAboveReplacement.toFixed(2)),
         valueAboveReplacement: Number(valueAboveReplacement.toFixed(2)),
-        minutesScore: Number(minutesScore.toFixed(1)),
-        confidence: Number(confidence.toFixed(1)),
-        upside: Number(upside.toFixed(1)),
+        minutesScore: displayRatings.minutesScore,
+        confidence: displayRatings.confidence,
+        upside: displayRatings.upside,
         differentialScore: Math.max(0, Math.min(100, 100 - num(player.selected_by_percent))),
         availabilityScore: Number((projection.availability * 100).toFixed(1)),
         attackingScore: Number(Math.max(0, Math.min(100, attackRate / 0.006)).toFixed(1)),
-        overall: Number((projectionScore * 0.8 + valueScore * 0.2).toFixed(1)),
+        overall: displayRatings.overall,
         status: player.status || "a",
         news: player.news || "",
         components: projection.components
