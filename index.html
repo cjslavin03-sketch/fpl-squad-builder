@@ -3038,24 +3038,21 @@ function renderSquad() {
 
     function sortByProjectedPoints(a, b) {
 
-        const aPoints =
-            Number(
-                a.analytics?.projectedPoints ||
-                a.total_points ||
-                0
-            );
+    const aPoints =
+        calculateGameweekProjection(
+            a,
+            selectedGameweek
+        );
 
-        const bPoints =
-            Number(
-                b.analytics?.projectedPoints ||
-                b.total_points ||
-                0
-            );
+    const bPoints =
+        calculateGameweekProjection(
+            b,
+            selectedGameweek
+        );
 
-        return bPoints - aPoints;
+    return bPoints - aPoints;
 
-    }
-
+}
 
     const sortedGoalkeepers =
         [...goalkeepers]
@@ -3193,6 +3190,72 @@ function renderSquad() {
         );
 
     }
+    updateSquadStats();
+const startingXI = [
+
+    ...startingGK,
+    ...startingDef,
+    ...startingMid,
+    ...startingFwd
+
+];
+
+
+const projectedElement =
+    document.getElementById(
+        "projected"
+    );
+
+
+const ratingElement =
+    document.getElementById(
+        "avg-rating"
+    );
+
+
+const gameweekProjected =
+    startingXI.reduce(
+        (sum, player) =>
+            sum +
+            calculateGameweekProjection(
+                player,
+                selectedGameweek
+            ),
+        0
+    );
+
+
+const gameweekAverageRating =
+    startingXI.length
+        ? startingXI.reduce(
+            (sum, player) =>
+                sum +
+                calculateGameweekRating(
+                    player,
+                    selectedGameweek
+                ),
+            0
+        ) /
+        startingXI.length
+        : 0;
+
+
+if (projectedElement) {
+
+    projectedElement.textContent =
+        gameweekProjected.toFixed(1);
+
+}
+
+
+if (ratingElement) {
+
+    ratingElement.textContent =
+        gameweekAverageRating.toFixed(1);
+
+}
+
+
 updateSquadStats();
 }
 
