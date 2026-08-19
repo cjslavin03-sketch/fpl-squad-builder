@@ -12,6 +12,11 @@ single-page builder and its public rendering functions.
   minutes model.
 - Expected goals and expected assists are converted to shrunk per-90 rates;
   goals, assists, xGI, ICT, threat and creativity are not added again.
+- Previous-season bonus is carried forward as a heavily shrunk per-90
+  expectation, with BPS used only as a capped supporting signal. Rare card,
+  own-goal and missed-penalty deductions receive twelve scoreless pseudo-90s.
+  Goal and assist output remains exclusively xG/xA-driven, avoiding double
+  counting.
 - Fixture effects are separated into attack, clean-sheet and goalkeeper-save
   adjustments.
 - Double gameweeks receive a conservative rotation haircut rather than two

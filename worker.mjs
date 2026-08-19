@@ -48,6 +48,29 @@ function finiteNumber(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
+// Keep this list explicit so the browser receives only stable, projection or
+// backtest-relevant history rather than an accidental copy of the whole CSV.
+// The prefix fallbacks preserve newly-added official assist/defensive fields
+// without requiring the worker to deploy in lockstep with an FPL schema change.
+const HISTORICAL_SCORING_FIELDS = [
+    "total_points", "points_per_game", "bonus", "bps", "goals_scored",
+    "assists", "clean_sheets", "goals_conceded", "yellow_cards", "red_cards",
+    "own_goals", "penalties_missed", "penalties_saved", "saves",
+    "defensive_contribution", "clearances_blocks_interceptions", "recoveries", "tackles"
+];
+
+function historicalScoringFields(player) {
+    const fields = {};
+    Object.keys(player).forEach(field => {
+        if (HISTORICAL_SCORING_FIELDS.includes(field) ||
+            field.startsWith("defensive_") ||
+            (field.includes("assist") && field !== "expected_assists")) {
+            fields[field] = finiteNumber(player[field]);
+        }
+    });
+    return fields;
+}
+
 function matchHistoricalPlayers(currentPlayers, historicalPlayers) {
     const byCode = new Map();
     const byId = new Map();
@@ -87,6 +110,7 @@ function matchHistoricalPlayers(currentPlayers, historicalPlayers) {
             expected_goals: finiteNumber(historical.expected_goals),
             expected_assists: finiteNumber(historical.expected_assists),
             saves: finiteNumber(historical.saves),
+            ...historicalScoringFields(historical),
             matches: appearances,
             appearances,
             match_method: matchMethod

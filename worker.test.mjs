@@ -7,9 +7,9 @@ import {
 assert.equal(seasonFor(new Date("2026-08-19T00:00:00Z")), "2026-27");
 assert.equal(previousSeason("2026-27"), "2025-26");
 
-const history = addAppearances(parseCsv(`id,code,first_name,second_name,web_name,minutes,starts,expected_goals,expected_assists,saves
-10,1001,Erling,Haaland,Haaland,2775,31,25.1,4.2,0
-20,1002,Bruno,Fernandes,B.Fernandes,3050,34,8.3,13.1,0
+const history = addAppearances(parseCsv(`id,code,first_name,second_name,web_name,minutes,starts,expected_goals,expected_assists,saves,bonus,bps,goals_scored,assists,clean_sheets,goals_conceded,yellow_cards,red_cards,own_goals,penalties_missed,penalties_saved,defensive_contribution,official_assists
+10,1001,Erling,Haaland,Haaland,2775,31,25.1,4.2,0,31,760,27,5,12,25,3,0,0,1,0,8,5
+20,1002,Bruno,Fernandes,B.Fernandes,3050,34,8.3,13.1,0,28,690,10,14,10,30,6,0,0,0,0,42,14
 30,9999,Duplicate,Name,Duplicate,100,1,0,0,0
 31,9998,Duplicate,Name,Duplicate,200,2,0,0,0
 `), parseCsv(`element,minutes
@@ -36,6 +36,12 @@ assert.ok(priors.every(player => player.starts >= 31));
 assert.ok(priors.every(player => player.matches === 2));
 assert.equal(priors[0].id, 101, "snapshot records use the current id for browser fallback matching");
 assert.equal(priors[0].historical_id, 10);
+assert.equal(priors[0].bonus, 31);
+assert.equal(priors[0].bps, 760);
+assert.equal(priors[0].goals_scored, 27);
+assert.equal(priors[0].penalties_missed, 1);
+assert.equal(priors[0].defensive_contribution, 8);
+assert.equal(priors[0].official_assists, 5);
 assert.equal(priors.some(player => player.web_name === "Signing"), false);
 
 const originalFetch = globalThis.fetch;
@@ -48,9 +54,9 @@ globalThis.fetch = async url => {
         }), { status: 200 });
     }
     if (url.endsWith("/players_raw.csv")) {
-        return new Response(`id,code,first_name,second_name,web_name,minutes,starts,expected_goals,expected_assists,saves
-10,1001,Erling,Haaland,Haaland,2775,31,25.1,4.2,0
-20,1002,Bruno,Fernandes,B.Fernandes,3050,34,8.3,13.1,0
+        return new Response(`id,code,first_name,second_name,web_name,minutes,starts,expected_goals,expected_assists,saves,bonus,bps,yellow_cards
+10,1001,Erling,Haaland,Haaland,2775,31,25.1,4.2,0,31,760,3
+20,1002,Bruno,Fernandes,B.Fernandes,3050,34,8.3,13.1,0,28,690,6
 `, { status: 200 });
     }
     if (url.endsWith("/merged_gw.csv")) {

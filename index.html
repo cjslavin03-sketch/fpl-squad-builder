@@ -1465,7 +1465,9 @@ function calculateAnalytics(player) {
         minutesScore: displayRatings.minutesScore,
         confidence: displayRatings.confidence,
         upside: displayRatings.upside,
-        differentialScore: Math.max(0, Math.min(100, 100 - num(player.selected_by_percent))),
+        differentialScore: Number(Math.max(0, Math.min(
+            100, 100 - num(player.selected_by_percent)
+        )).toFixed(1)),
         availabilityScore: Number((projection.availability * 100).toFixed(1)),
         attackingScore: Number(Math.max(0, Math.min(100, attackRate / 0.006)).toFixed(1)),
         overall: displayRatings.overall,
