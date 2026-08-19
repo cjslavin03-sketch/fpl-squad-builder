@@ -1176,6 +1176,34 @@ function calculateAnalytics(player) {
     const position =
         positions[player.element_type] || "MID";
 
+const status =
+    player.status || "a";
+
+const chanceNextRound =
+    player.chance_of_playing_next_round;
+
+const news =
+    player.news || "";
+
+let availabilityScore = 100;
+
+if (
+    status === "i" ||
+    status === "s" ||
+    status === "u"
+) {
+
+    availabilityScore = 0;
+
+} else if (
+    chanceNextRound !== null &&
+    chanceNextRound !== undefined
+) {
+
+    availabilityScore =
+        Number(chanceNextRound);
+
+}
 
     /* ---------------------------------------------
        MINUTES SECURITY
@@ -1204,7 +1232,14 @@ function calculateAnalytics(player) {
             );
 
     }
+// Current injury / availability adjustment
 
+minutesScore =
+    minutesScore *
+    (
+        availabilityScore /
+        100
+    );
 
     /* ---------------------------------------------
        PERFORMANCE
@@ -1449,7 +1484,16 @@ function calculateAnalytics(player) {
 
 
     return {
+availabilityScore:
+    Number(
+        availabilityScore.toFixed(1)
+    ),
 
+status:
+    status,
+
+news:
+    news,
         projection:
             Number(projection.toFixed(1)),
 
@@ -1706,7 +1750,29 @@ const locked =
 
                 Ownership:
                 ${num(player.selected_by_percent).toFixed(1)}%
+<br><br>
 
+<strong>Availability:</strong>
+
+${
+    player.status === "a"
+        ? "✅ Available"
+        :
+    player.chance_of_playing_next_round !== null &&
+    player.chance_of_playing_next_round !== undefined
+        ? "⚠️ " +
+          player.chance_of_playing_next_round +
+          "% chance"
+        : "❌ Unavailable"
+}
+
+${
+    player.news
+        ? "<br><small>" +
+          player.news +
+          "</small>"
+        : ""
+}
             </div>
 
 
@@ -3256,7 +3322,20 @@ function buildOptimizedSquad(strategy) {
 
 
     players.forEach(player => {
+// Do not auto-select confirmed unavailable players
 
+if (
+    player.status === "i" ||
+    player.status === "s" ||
+    player.status === "u" ||
+    Number(
+        player.chance_of_playing_next_round
+    ) === 0
+) {
+
+    return;
+
+}
         const id =
             Number(player.id);
 
