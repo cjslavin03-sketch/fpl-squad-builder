@@ -1066,6 +1066,7 @@ button {
 
 </div>
 
+<script src="model.js"></script>
 <script>
 
 /* =========================================================
@@ -1367,698 +1368,66 @@ function escapeHTML(value) {
    receiving a terrible score.
 ========================================================= */
 
+function getCompletedMatchEstimate() {
+    return players.reduce(
+        (maximum, player) => Math.max(maximum, num(player.starts)),
+        0
+    );
+}
+
+function getProjectionContext() {
+    return {
+        gamesPlayed: getCompletedMatchEstimate(),
+        fixturesLoaded
+    };
+}
+
 function calculateAnalytics(player) {
-
-    // =====================================================
-    // RAW LIVE FPL DATA
-    // =====================================================
-
-    const points =
-        num(player.total_points);
-
-    const ppg =
-        num(player.points_per_game);
-
-    const minutes =
-        num(player.minutes);
-
-    const starts =
-        num(player.starts);
-
-    const form =
-        num(player.form);
-
-    const price =
-        getPrice(player);
-
-    const ownership =
-        num(player.selected_by_percent);
-
-    const position =
-        positions[player.element_type] || "MID";
-
-
-    // Attacking production
-
-    const goals =
-        num(player.goals_scored);
-
-    const assists =
-        num(player.assists);
-
-    const expectedGoals =
-        num(player.expected_goals);
-
-    const expectedAssists =
-        num(player.expected_assists);
-
-    const expectedGI =
-        num(player.expected_goal_involvements);
-
-
-    // FPL attacking indicators
-
-    const threat =
-        num(player.threat);
-
-    const creativity =
-        num(player.creativity);
-
-    const ict =
-        num(player.ict_index);
-
-
-    // Other FPL production
-
-    const bonus =
-        num(player.bonus);
-
-    const cleanSheets =
-        num(player.clean_sheets);
-
-    const saves =
-        num(player.saves);
-
-
-    // =====================================================
-    // LIVE AVAILABILITY / INJURY
-    // =====================================================
-
-    const status =
-        player.status || "a";
-
-    const chanceNextRound =
-        player.chance_of_playing_next_round;
-
-    const news =
-        player.news || "";
-
-
-    let availabilityScore = 100;
-
-
-    if (
-        status === "i" ||
-        status === "s" ||
-        status === "u"
-    ) {
-
-        availabilityScore = 0;
-
-    } else if (
-        chanceNextRound !== null &&
-        chanceNextRound !== undefined
-    ) {
-
-        availabilityScore =
-            Math.max(
-                0,
-                Math.min(
-                    100,
-                    Number(chanceNextRound)
-                )
-            );
-
-    }
-
-
-    // =====================================================
-    // MINUTES SECURITY
-    //
-    // Measures reliability of actually playing.
-    // It deliberately does NOT use goals, assists,
-    // value or projected points.
-    // =====================================================
-
-    let minutesScore = 50;
-
-
-    if (minutes > 0) {
-
-        const fullMatches =
-            minutes / 90;
-
-
-        const startRate =
-            fullMatches > 0
-                ? Math.min(
-                    1,
-                    starts /
-                    Math.max(
-                        1,
-                        fullMatches
-                    )
-                )
-                : 0;
-
-
-        const sampleScore =
-            Math.min(
-                100,
-                40 +
-                minutes / 20
-            );
-
-
-        minutesScore =
-            sampleScore * 0.70 +
-            startRate * 100 * 0.30;
-
-    }
-
-
-    // Current availability directly affects
-    // likelihood of getting minutes.
-
-    minutesScore =
-        minutesScore *
-        (
-            availabilityScore /
-            100
-        );
-
-
-    minutesScore =
-        Math.max(
-            0,
-            Math.min(
-                100,
-                minutesScore
-            )
-        );
-
-
-    // =====================================================
-    // CONFIDENCE
-    //
-    // Measures how trustworthy our estimate is.
-    // Mostly sample size + availability.
-    // It does NOT reward attacking ability.
-    // =====================================================
-
-    let confidence = 45;
-
-
-    if (minutes >= 270) {
-        confidence += 8;
-    }
-
-    if (minutes >= 600) {
-        confidence += 8;
-    }
-
-    if (minutes >= 1200) {
-        confidence += 8;
-    }
-
-    if (minutes >= 2000) {
-        confidence += 8;
-    }
-
-    if (starts >= 10) {
-        confidence += 5;
-    }
-
-    if (starts >= 20) {
-        confidence += 5;
-    }
-
-
-    confidence *=
-        (
-            0.50 +
-            (
-                availabilityScore /
-                100
-            ) * 0.50
-        );
-
-
-    confidence =
-        Math.max(
-            5,
-            Math.min(
-                98,
-                confidence
-            )
-        );
-
-
-    // =====================================================
-    // ATTACKING / HAUL UPSIDE
-    //
-    // This is intentionally different from minutes.
-    // It rewards actual attacking involvement.
-    // =====================================================
-
-    let attackingScore = 45;
-
-
-    const attackingDataExists =
-        goals > 0 ||
-        assists > 0 ||
-        expectedGI > 0 ||
-        threat > 0 ||
-        creativity > 0 ||
-        ict > 0;
-
-
-    if (attackingDataExists) {
-
-        const goalScore =
-            Math.min(
-                100,
-                goals * 12
-            );
-
-
-        const assistScore =
-            Math.min(
-                100,
-                assists * 10
-            );
-
-
-        const xGScore =
-            Math.min(
-                100,
-                expectedGoals * 18
-            );
-
-
-        const xAScore =
-            Math.min(
-                100,
-                expectedAssists * 18
-            );
-
-
-        const xGIScore =
-            Math.min(
-                100,
-                expectedGI * 12
-            );
-
-
-        const threatScore =
-            Math.min(
-                100,
-                threat / 8
-            );
-
-
-        const creativityScore =
-            Math.min(
-                100,
-                creativity / 8
-            );
-
-
-        attackingScore =
-            goalScore * 0.15 +
-            assistScore * 0.12 +
-            xGScore * 0.18 +
-            xAScore * 0.16 +
-            xGIScore * 0.18 +
-            threatScore * 0.11 +
-            creativityScore * 0.10;
-
-    }
-
-
-    // Position context.
-    // Attackers get slightly more haul potential
-    // from attacking involvement.
-
-    let positionUpsideBonus = 0;
-
-
-    if (position === "MID") {
-        positionUpsideBonus = 5;
-    }
-
-    if (position === "FWD") {
-        positionUpsideBonus = 7;
-    }
-
-    if (position === "DEF") {
-        positionUpsideBonus = 1;
-    }
-
-
-    let upside =
-        attackingScore +
-        positionUpsideBonus;
-
-
-    // Bonus-point ability adds some ceiling.
-
-    upside +=
-        Math.min(
-            8,
-            bonus / 5
-        );
-
-
-    upside =
-        Math.max(
-            10,
-            Math.min(
-                98,
-                upside
-            )
-        );
-
-
-    // =====================================================
-    // EXPECTED FPL POINTS
-    //
-    // THIS is the number Best Overall should eventually
-    // care about most.
-    //
-    // Availability/minutes affect expected output here once,
-    // so Best Overall does not need to heavily reward them
-    // again later.
-    // =====================================================
-
-    const officialExpectedNext =
-        num(player.ep_next);
-
-
-    let baseProjection;
-
-
-    if (officialExpectedNext > 0) {
-
-        // Use FPL's current expected-points signal
-        // when it is actually populated.
-
-        baseProjection =
-            officialExpectedNext;
-
-    } else if (ppg > 0) {
-
-        // Competitive performance baseline.
-
-        baseProjection =
-            ppg * 0.72 +
-            form * 0.18 +
-            (
-                attackingScore /
-                100
-            ) * 1.20;
-
- } else {
-
-    // Pre-GW1 / limited-current-season fallback.
-    // FPL current-season stats can be empty before
-    // meaningful competitive data exists, so use
-    // price, ownership, attacking profile and
-    // availability as conservative predictive signals.
-
-    const priceSignal =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                (price - 4) / 11
-            )
-        );
-
-    const ownershipSignal =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                ownership / 50
-            )
-        );
-
-    const attackSignal =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                attackingScore / 100
-            )
-        );
-
-    baseProjection =
-        3.8 +
-        priceSignal * 2.1 +
-        ownershipSignal * 0.7 +
-        attackSignal * 0.9;
-
-}
-
-
-    // Defensive FPL production can matter without
-    // turning attacking upside into the same metric.
-
-    let defensiveBonus = 0;
-
-
-    if (position === "GK") {
-
-        defensiveBonus =
-            Math.min(
-                1.2,
-                cleanSheets * 0.05 +
-                saves * 0.01
-            );
-
-    } else if (position === "DEF") {
-
-        defensiveBonus =
-            Math.min(
-                1.0,
-                cleanSheets * 0.06
-            );
-
-    }
-
-
-    baseProjection +=
-        defensiveBonus;
-
-
-    // Playing probability.
-    //
-    // Healthy established starters remain near 1.0.
-    // Doubtful/rotational players are reduced.
-
-    const playingFactor =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                (
-                    minutesScore * 0.65 +
-                    availabilityScore * 0.35
-                ) / 100
-            )
-        );
-
-
-    let projection =
-        baseProjection *
-        (
-            0.55 +
-            playingFactor * 0.45
-        );
-
-
-    // Confirmed unavailable = essentially no
-    // immediate FPL expectation.
-
-    if (availabilityScore === 0) {
-
-        projection = 0;
-
-    }
-
-
-    projection =
-        Math.max(
-            0,
-            Math.min(
-                12,
-                projection
-            )
-        );
-
-
-    // =====================================================
-    // VALUE
-    //
-    // Expected points per £m.
-    // Expensive players must actually justify the price.
-    // =====================================================
-
-    let valueScore = 50;
-
-
-if (
-    price > 0 &&
-    projection > 0
-) {
-
-    const projectedPerMillion =
-        projection /
-        price;
-
-
-    // Recalibrated so good premium players
-    // are not punished too harshly for price.
-    //
-    // Rough guide:
-    // elite value      = 85–95
-    // strong value     = 75–85
-    // average value    = 60–75
-    // weak value       = below 60
-
-    valueScore =
-        40 +
-        projectedPerMillion *
-        55;
-
-}
-
-
-valueScore =
-    Math.max(
-        20,
-        Math.min(
-            98,
-            valueScore
-        )
+    // The display analytics are all views of one independent event model.
+    // Availability enters only through its minutes distribution; price and
+    // ownership never predict points.
+    const projection = FPLModel.projectFixture(
+        player,
+        null,
+        getProjectionContext()
     );
-
-    // =====================================================
-    // DIFFERENTIAL
-    //
-    // PURELY ownership-based.
-    //
-    // Quality is handled separately by projection/upside.
-    // =====================================================
-
-    const differentialScore =
-        Math.max(
-            0,
-            Math.min(
-                100,
-                100 - ownership
-            )
-        );
-
-
-    // =====================================================
-    // DISPLAY OVERALL RATING
-    //
-    // This is a general player rating.
-    // It is NOT automatically the Best Overall optimizer
-    // objective.
-    // =====================================================
-
-    const projectionScore =
-    Math.min(
-        100,
-        (
-            projection /
-            7
-        ) * 100
-    );
-
-
-const rawOverall =
-    projectionScore * 0.50 +
-    valueScore * 0.12 +
-    minutesScore * 0.14 +
-    upside * 0.14 +
-    confidence * 0.10;
-
-
-// Recalibrate the display scale.
-//
-// This does NOT change the underlying player data.
-// It changes how the combined score maps onto 0–100.
-//
-// Strong FPL picks should generally live in the 80s,
-// while elite picks can reach the 90s.
-
-let overall =
-    35 +
-    rawOverall * 0.65;
-
-
-overall =
-    Math.max(
-        25,
-        Math.min(
-            99,
-            overall
-        )
-    );
-
-    // =====================================================
-    // RETURN
-    // =====================================================
+    const price = getPrice(player);
+    const position = positions[player.element_type] || "MID";
+    const attackRate = projection.xG90 + projection.xA90;
+    const replacementPoints = { GK: 3.0, DEF: 3.1, MID: 3.4, FWD: 3.5 }[position];
+    const replacementPrice = { GK: 4.0, DEF: 4.0, MID: 4.5, FWD: 4.5 }[position];
+    const pointsAboveReplacement = projection.mean - replacementPoints;
+    const valueAboveReplacement = pointsAboveReplacement /
+        Math.max(0.5, price - replacementPrice);
+    const valueScore = Math.max(0, Math.min(100, 50 + valueAboveReplacement * 18));
+    const minutesScore = Math.max(0, Math.min(100, projection.expectedMinutes / 0.9));
+    const upside = Math.max(0, Math.min(100, projection.ceiling / 0.12));
+    const confidence = Math.max(5, Math.min(98,
+        35 + Math.min(45, num(player.minutes) / 20) + projection.availability * 18
+    ));
+    const projectionScore = Math.max(0, Math.min(100, projection.mean / 0.07));
 
     return {
-
-        projection:
-            Number(
-                projection.toFixed(1)
-            ),
-
-        valueScore:
-            Number(
-                valueScore.toFixed(1)
-            ),
-
-        minutesScore:
-            Number(
-                minutesScore.toFixed(1)
-            ),
-
-        confidence:
-            Number(
-                confidence.toFixed(1)
-            ),
-
-        upside:
-            Number(
-                upside.toFixed(1)
-            ),
-
-        differentialScore:
-            Number(
-                differentialScore.toFixed(1)
-            ),
-
-        availabilityScore:
-            Number(
-                availabilityScore.toFixed(1)
-            ),
-
-        attackingScore:
-            Number(
-                attackingScore.toFixed(1)
-            ),
-
-        overall:
-            Number(
-                overall.toFixed(1)
-            ),
-
-        status:
-            status,
-
-        news:
-            news
-
+        projection: Number(projection.mean.toFixed(1)),
+        floor: Number(projection.floor.toFixed(1)),
+        ceiling: Number(projection.ceiling.toFixed(1)),
+        haulProbability: Number((projection.haulProbability * 100).toFixed(1)),
+        expectedMinutes: Number(projection.expectedMinutes.toFixed(0)),
+        nonAppearanceProbability: Number((projection.pZero * 100).toFixed(1)),
+        valueScore: Number(valueScore.toFixed(1)),
+        pointsAboveReplacement: Number(pointsAboveReplacement.toFixed(2)),
+        valueAboveReplacement: Number(valueAboveReplacement.toFixed(2)),
+        minutesScore: Number(minutesScore.toFixed(1)),
+        confidence: Number(confidence.toFixed(1)),
+        upside: Number(upside.toFixed(1)),
+        differentialScore: Math.max(0, Math.min(100, 100 - num(player.selected_by_percent))),
+        availabilityScore: Number((projection.availability * 100).toFixed(1)),
+        attackingScore: Number(Math.max(0, Math.min(100, attackRate / 0.006)).toFixed(1)),
+        overall: Number((projectionScore * 0.8 + valueScore * 0.2).toFixed(1)),
+        status: player.status || "a",
+        news: player.news || "",
+        components: projection.components
     };
-
 }
 // =========================================================
 // GAMEWEEK SIMULATION
@@ -2217,49 +1586,25 @@ function getGameweekFixtureMultiplier(
 // Gameweek-specific projected points
 // ---------------------------------------------------------
 
+function calculateGameweekProjectionDetails(
+    player,
+    gameweek = selectedGameweek
+) {
+    return FPLModel.projectGameweek(
+        player,
+        getPlayerGameweekFixtures(player, gameweek),
+        getProjectionContext()
+    );
+}
+
 function calculateGameweekProjection(
     player,
     gameweek = selectedGameweek
 ) {
-
-    const analytics =
-        calculateAnalytics(player);
-
-
-    const baseProjection =
-        Number(
-            analytics.projection ||
-            0
-        );
-
-
-    const fixtureMultiplier =
-        getGameweekFixtureMultiplier(
-            player,
-            gameweek
-        );
-
-
-    if (
-        fixtureMultiplier === 0
-    ) {
-
-        return 0;
-
-    }
-
-
-    const projection =
-        baseProjection *
-        fixtureMultiplier;
-
-
     return Number(
-        projection.toFixed(1)
+        calculateGameweekProjectionDetails(player, gameweek).mean.toFixed(1)
     );
-
 }
-
 
 // ---------------------------------------------------------
 // Gameweek-specific player rating
@@ -2334,6 +1679,18 @@ const manualViceCaptainByGameweek = {};
 
 
 // ---------------------------------------------------------
+// Expected-value captaincy includes the vice only when the captain
+// records zero minutes, with a small same-club shared-risk haircut.
+// ---------------------------------------------------------
+
+function getSuggestedCaptainPair(startingXI) {
+    return FPLModel.captainPair(
+        startingXI,
+        player => calculateGameweekProjectionDetails(player, selectedGameweek)
+    );
+}
+
+// ---------------------------------------------------------
 // Update captain controls from the current starting XI
 // ---------------------------------------------------------
 
@@ -2400,11 +1757,9 @@ function updateCaptainControls(
             );
 
 
-    const suggestedCaptain =
-        ranked[0];
-
-    const suggestedVice =
-        ranked[1] || ranked[0];
+    const suggestedPair = getSuggestedCaptainPair(startingXI);
+    const suggestedCaptain = suggestedPair?.captain || ranked[0];
+    const suggestedVice = suggestedPair?.vice || ranked[1] || ranked[0];
 
 
     // -----------------------------------------------------
@@ -2625,18 +1980,7 @@ function getCurrentCaptain(
     }
 
 
-    return [...startingXI]
-        .sort(
-            (a, b) =>
-                calculateGameweekProjection(
-                    b,
-                    selectedGameweek
-                ) -
-                calculateGameweekProjection(
-                    a,
-                    selectedGameweek
-                )
-        )[0];
+    return getSuggestedCaptainPair(startingXI)?.captain;
 
 }
 
@@ -2682,23 +2026,7 @@ function getCurrentViceCaptain(
     }
 
 
-    return [...startingXI]
-        .filter(
-            player =>
-                Number(player.id) !==
-                Number(captain?.id)
-        )
-        .sort(
-            (a, b) =>
-                calculateGameweekProjection(
-                    b,
-                    selectedGameweek
-                ) -
-                calculateGameweekProjection(
-                    a,
-                    selectedGameweek
-                )
-        )[0];
+    return getSuggestedCaptainPair(startingXI)?.vice;
 
 }
 /* =========================================================
@@ -4410,218 +3738,61 @@ function buildOptimizedSquad(strategy) {
     // =====================================================
 
     function strategyScore(player) {
-
-        const a =
-            calculateAnalytics(player);
-
-
-        const projection =
-    calculateGameweekProjection(
-        player,
-        selectedGameweek
-    );
-
-
-        const projectionScore =
-            Math.min(
-                100,
-                (
-                    projection /
-                    8
-                ) * 100
-            );
-
-
-        const value =
-            Number(
-                a.valueScore ||
-                0
-            );
-
-
-        const minutes =
-            Number(
-                a.minutesScore ||
-                0
-            );
-
-
-        const confidence =
-            Number(
-                a.confidence ||
-                0
-            );
-
-
-        const upside =
-            Number(
-                a.upside ||
-                0
-            );
-
-
-        const attacking =
-            Number(
-                a.attackingScore ||
-                0
-            );
-
-
-        const differential =
-            Number(
-                a.differentialScore ||
-                0
-            );
-
-
-        // ---------------------------------------------
-        // BEST OVERALL
-        //
-        // Expected FPL points above everything else.
-        // Reliability is already baked into projection,
-        // so we deliberately do not double-count it.
-        // ---------------------------------------------
-
-        if (
-            strategy === "overall"
-        ) {
-
-            return (
-                projectionScore * 0.90 +
-                value * 0.10
-            );
-
+        const projection = calculateGameweekProjectionDetails(player, selectedGameweek);
+        const ownership = num(player.selected_by_percent);
+        const attacking = projection.components.attackingPoints;
+        if (strategy === "safe") return projection.floor;
+        if (strategy === "upside") return projection.mean + projection.ceiling * 0.25;
+        if (strategy === "differential") return projection.mean + Math.max(0, 15 - ownership) * 0.025;
+        if (strategy === "attack") return projection.mean * 0.65 + attacking * 0.35;
+        if (strategy === "moneyball") {
+            const analytics = calculateAnalytics(player);
+            return projection.mean + Math.max(-1, analytics.pointsAboveReplacement) * 0.08;
         }
-
-
-        // ---------------------------------------------
-        // SAFE & RELIABLE
-        //
-        // Sacrifice some ceiling for certainty.
-        // ---------------------------------------------
-
-        if (
-            strategy === "safe"
-        ) {
-
-            return (
-                projectionScore * 0.40 +
-                minutes * 0.32 +
-                confidence * 0.23 +
-                value * 0.05
-            );
-
-        }
-
-
-        // ---------------------------------------------
-        // MONEYBALL
-        //
-        // Expected production for the price.
-        // ---------------------------------------------
-
-        if (
-            strategy === "moneyball"
-        ) {
-
-            return (
-                value * 0.55 +
-                projectionScore * 0.30 +
-                minutes * 0.10 +
-                confidence * 0.05
-            );
-
-        }
-
-
-        // ---------------------------------------------
-        // ATTACK HEAVY
-        //
-        // Actual attacking involvement + projection.
-        // ---------------------------------------------
-
-        if (
-            strategy === "attack"
-        ) {
-
-            return (
-                attacking * 0.45 +
-                upside * 0.25 +
-                projectionScore * 0.25 +
-                value * 0.05
-            );
-
-        }
-
-
-        // ---------------------------------------------
-        // BALANCED
-        // ---------------------------------------------
-
-        if (
-            strategy === "balanced"
-        ) {
-
-            return (
-                projectionScore * 0.35 +
-                value * 0.20 +
-                minutes * 0.18 +
-                upside * 0.12 +
-                confidence * 0.15
-            );
-
-        }
-
-
-        // ---------------------------------------------
-        // DIFFERENTIAL
-        //
-        // Low ownership alone is NOT enough.
-        // Player must still project well.
-        // ---------------------------------------------
-
-        if (
-            strategy === "differential"
-        ) {
-
-            return (
-                projectionScore * 0.35 +
-                differential * 0.30 +
-                upside * 0.15 +
-                value * 0.10 +
-                confidence * 0.10
-            );
-
-        }
-
-
-        // ---------------------------------------------
-        // HIGH UPSIDE
-        //
-        // Maximum ceiling even with more uncertainty.
-        // ---------------------------------------------
-
-        if (
-            strategy === "upside"
-        ) {
-
-            return (
-                upside * 0.45 +
-                attacking * 0.25 +
-                projectionScore * 0.22 +
-                differential * 0.08
-            );
-
-        }
-
-
-        return (
-            projectionScore * 0.90 +
-            value * 0.10
-        );
-
+        return projection.mean;
     }
 
+    function squadObjective(candidateSquad) {
+        const formations = [
+            [3, 4, 3], [3, 5, 2], [4, 3, 3], [4, 4, 2],
+            [4, 5, 1], [5, 2, 3], [5, 3, 2], [5, 4, 1]
+        ];
+        const byPosition = position => candidateSquad
+            .filter(player => Number(player.element_type) === position)
+            .sort((a, b) => strategyScore(b) - strategyScore(a));
+        let best = -Infinity;
+
+        formations.forEach(([defenders, midfielders, forwards]) => {
+            const startingXI = [
+                ...byPosition(1).slice(0, 1),
+                ...byPosition(2).slice(0, defenders),
+                ...byPosition(3).slice(0, midfielders),
+                ...byPosition(4).slice(0, forwards)
+            ];
+            if (startingXI.length !== 11) return;
+            const starterIds = new Set(startingXI.map(player => Number(player.id)));
+            const details = player => calculateGameweekProjectionDetails(player, selectedGameweek);
+            const pair = FPLModel.captainPair(startingXI, details);
+            const starterUtility = startingXI.reduce((total, player) => total + strategyScore(player), 0);
+            const captainUtility = pair ? pair.utility : 0;
+            const averageAbsence = startingXI.reduce((total, player) => total + details(player).pZero, 0) / 11;
+            const bench = candidateSquad
+                .filter(player => !starterIds.has(Number(player.id)))
+                .sort((a, b) => strategyScore(b) - strategyScore(a));
+            const reserveKeeper = bench.find(player => Number(player.element_type) === 1);
+            const outfieldBench = bench.filter(player => Number(player.element_type) !== 1);
+            const benchUtility = (reserveKeeper ? details(startingXI[0]).pZero * strategyScore(reserveKeeper) : 0) +
+                outfieldBench.reduce((total, player, index) =>
+                    total + strategyScore(player) * averageAbsence * [1, 0.55, 0.25][index], 0);
+            let objective = starterUtility + captainUtility + benchUtility;
+            if (strategy === "attack" && defenders > 3) objective -= (defenders - 3) * 0.75;
+            if (strategy === "moneyball") objective += Math.max(0, 1000 - candidateSquad.reduce(
+                (total, player) => total + num(player.now_cost), 0
+            )) * 0.002;
+            best = Math.max(best, objective);
+        });
+        return best;
+    }
 
     // =====================================================
     // CREATE UNIQUE CANDIDATE POOL
@@ -5233,11 +4404,10 @@ function buildOptimizedSquad(strategy) {
     }
 
 
-    completedStates.sort(
-        (a, b) =>
-            b.score -
-            a.score
-    );
+    completedStates.forEach(state => {
+        state.score = squadObjective(state.squad);
+    });
+    completedStates.sort((a, b) => b.score - a.score);
 
 
     const winner =
