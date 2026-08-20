@@ -158,6 +158,19 @@ button {
     box-shadow: 0 2px 7px rgba(0,0,0,.08);
 }
 
+.lock-player-button {
+    margin-top: 8px;
+    background: #eee;
+    border: 2px solid transparent;
+}
+
+.lock-player-button.locked {
+    background: #e6fff3;
+    border-color: #00a95c;
+    color: #235b3b;
+    font-weight: bold;
+}
+
 .player-header {
     display: flex;
     justify-content: space-between;
@@ -1386,7 +1399,8 @@ async function loadFPL() {
             .filter(projection => projection.availability > 0 && projection.expectedMinutes >= 20)
             .map(projection => projection.mean);
 
-loadSavedSquad();
+        loadSavedSquad();
+        loadLockedPlayers();
         renderPlayers();
 
         renderSquad();
@@ -2509,8 +2523,9 @@ ${
 
             </button>
 <button
-    class="lock-player-button"
+    class="lock-player-button${locked ? " locked" : ""}"
     type="button"
+    aria-pressed="${locked}"
 >
     ${
         locked
@@ -3472,6 +3487,50 @@ saveSquad();
 
 }
 
+// =========================================================
+// LOCK / UNLOCK PLAYER
+// =========================================================
+
+function togglePlayerLock(playerId) {
+
+    const id = Number(playerId);
+
+    if (!Number.isFinite(id)) {
+        return;
+    }
+
+    if (lockedPlayerIds.has(id)) {
+        lockedPlayerIds.delete(id);
+        saveLockedPlayers();
+        renderSquad();
+        renderPlayers();
+        return;
+    }
+
+    const player = players.find(
+        candidate => Number(candidate.id) === id
+    );
+
+    if (!player) {
+        return;
+    }
+
+    if (!squad.some(candidate => Number(candidate.id) === id)) {
+        addPlayerToSquad(id);
+    }
+
+    // addPlayerToSquad applies the normal position, club, size and budget checks.
+    // A rejected add must never leave behind a hidden lock.
+    if (!squad.some(candidate => Number(candidate.id) === id)) {
+        return;
+    }
+
+    lockedPlayerIds.add(id);
+    saveLockedPlayers();
+    renderSquad();
+    renderPlayers();
+}
+
 
 // =========================================================
 // POSITION NAME
@@ -3492,9 +3551,15 @@ function positionName(type) {
 
 function removePlayerFromSquad(playerId) {
 
+    const id = Number(playerId);
+
+    if (lockedPlayerIds.delete(id)) {
+        saveLockedPlayers();
+    }
+
     const index =
         squad.findIndex(
-            p => Number(p.id) === Number(playerId)
+            p => Number(p.id) === id
         );
 
 
@@ -3514,6 +3579,70 @@ saveSquad();
 // =========================================================
 // SAVE / LOAD SQUAD
 // =========================================================
+
+function saveLockedPlayers() {
+
+    try {
+
+        localStorage.setItem(
+            "fpl_locked_player_ids",
+            JSON.stringify(
+                Array.from(lockedPlayerIds).map(Number)
+            )
+        );
+
+    } catch (error) {
+
+        console.warn("Could not save locked players:", error);
+
+    }
+
+}
+
+
+function loadLockedPlayers() {
+
+    lockedPlayerIds.clear();
+
+    try {
+
+        const saved = localStorage.getItem(
+            "fpl_locked_player_ids"
+        );
+
+        if (!saved) {
+            return;
+        }
+
+        const savedIds = JSON.parse(saved);
+
+        if (!Array.isArray(savedIds)) {
+            localStorage.removeItem("fpl_locked_player_ids");
+            return;
+        }
+
+        const playerIds = new Set(players.map(player => Number(player.id)));
+        const squadIds = new Set(squad.map(player => Number(player.id)));
+
+        savedIds.forEach(savedId => {
+            const id = Number(savedId);
+            if (Number.isFinite(id) && playerIds.has(id) && squadIds.has(id)) {
+                lockedPlayerIds.add(id);
+            }
+        });
+
+        // Rewrite the value so stale IDs and non-numeric representations do
+        // not survive another reload.
+        saveLockedPlayers();
+
+    } catch (error) {
+
+        console.warn("Could not load locked players:", error);
+        lockedPlayerIds.clear();
+
+    }
+
+}
 
 function saveSquad() {
 
@@ -3716,6 +3845,9 @@ if (clearSquadButton) {
                 localStorage.removeItem(
                     "fpl_saved_squad"
                 );
+                localStorage.removeItem(
+                    "fpl_locked_player_ids"
+                );
             } catch (error) {
                 console.warn("Could not clear saved squad:", error);
             }
@@ -3760,13 +3892,21 @@ function buildOptimizedSquad(strategy) {
     // PRESERVE ONLY EXPLICITLY LOCKED PLAYERS
     // =====================================================
 
-    const lockedPlayers =
-        squad.filter(
-            player =>
-                lockedPlayerIds.has(
-                    Number(player.id)
-                )
+    const lockedPlayers = Array.from(lockedPlayerIds)
+        .map(id => players.find(player => Number(player.id) === Number(id)))
+        .filter(Boolean);
+
+    if (
+        lockedPlayers.length !== lockedPlayerIds.size ||
+        lockedPlayers.some(lockedPlayer => !squad.some(
+            player => Number(player.id) === Number(lockedPlayer.id)
+        ))
+    ) {
+        alert(
+            "A locked player is no longer available in your squad. Unlock that player or add them again before building."
         );
+        return;
+    }
 
 
     const lockedIds =
