@@ -205,7 +205,8 @@ function cleanModel(model = {}) {
 }
 
 const SAFE_FAILURES = new Set(["none", "configuration", "identity_not_found", "identity_ambiguous",
-    "auth", "rate_limit", "malformed", "upstream", "partial_provider_failure", "language_provider"]);
+    "auth", "rate_limit", "season", "request", "plan", "malformed", "upstream",
+    "partial_provider_failure", "language_provider"]);
 function safeFailure(value) {
     const category = String(value || "none").split(":").at(-1);
     return SAFE_FAILURES.has(category) ? category : "upstream";
@@ -218,6 +219,12 @@ function safeState(value) {
 }
 function safeId(value) { return value === null || value === undefined ? "unavailable" :
     String(value).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "unavailable"; }
+function safeErrorKeys(values) { return (Array.isArray(values) ? values : []).map(value =>
+    String(value).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40)).filter(Boolean).slice(0, 8); }
+function safeProviderMessage(value) { return value ? String(value).replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/((?:bearer|authorization))\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+    .replace(/((?:api[-_ ]?key|token))\s*[:=]\s*[^\s,;]+/gi, "$1: [redacted]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]").replace(/\s+/g, " ").trim().slice(0, 160) : "unavailable"; }
 
 function debugBlock(diagnostics, answerMode, failures) {
     const lines = ["--- DEBUG ---"];
@@ -232,22 +239,28 @@ function debugBlock(diagnostics, answerMode, failures) {
             `- provider selection attempted: ${yesNo(historical.providerSelectionAttempted)}`,
             `- provider: ${safeProvider(historical.provider)}`, `- provider configured: ${yesNo(historical.providerConfigured)}`,
             `- identity lookup attempted: ${yesNo(historical.identityLookupAttempted)}`,
+            `- identity lookup request completed: ${yesNo(historical.identityLookupRequestCompleted)}`,
             `- identity matched: ${yesNo(item.historicalIdentityMatched)}`,
             `- provider player ID: ${safeId(item.historicalProviderPlayerId)}`,
             `- identity confidence: ${["High", "Medium", "Low", "Unavailable"].includes(item.identityConfidence) ? item.identityConfidence : "Unavailable"}`,
             `- historical rows returned: ${Number.isInteger(item.historicalRows) ? item.historicalRows : 0}`,
             `- status: ${safeState(historical.state)}`,
             `- failure category: ${historical.failureCategory ? safeFailure(historical.failureCategory) : "none"}`,
+            `- provider error keys: ${safeErrorKeys(historical.providerErrorKeys).join(", ") || "none"}`,
+            `- provider message: ${safeProviderMessage(historical.providerMessage)}`,
             "Recent retrieval:", `- requested: ${yesNo(recent.requested)}`,
             `- cache: ${["hit", "miss", "skipped", "not_configured"].includes(item.cache?.recent) ? item.cache.recent : "unknown"}`,
             `- provider selection attempted: ${yesNo(recent.providerSelectionAttempted)}`,
             `- provider: ${safeProvider(recent.provider)}`, `- provider configured: ${yesNo(recent.providerConfigured)}`,
             `- identity lookup attempted: ${yesNo(recent.identityLookupAttempted)}`,
+            `- identity lookup request completed: ${yesNo(recent.identityLookupRequestCompleted)}`,
             `- identity matched: ${yesNo(item.recentIdentityMatched)}`,
             `- provider player ID: ${safeId(item.recentProviderPlayerId)}`,
             `- items returned: ${Number.isInteger(item.currentItems) ? item.currentItems : 0}`,
             `- stale: ${yesNo(item.currentStale)}`, `- status: ${safeState(recent.state)}`,
-            `- failure category: ${recent.failureCategory ? safeFailure(recent.failureCategory) : "none"}`);
+            `- failure category: ${recent.failureCategory ? safeFailure(recent.failureCategory) : "none"}`,
+            `- provider error keys: ${safeErrorKeys(recent.providerErrorKeys).join(", ") || "none"}`,
+            `- provider message: ${safeProviderMessage(recent.providerMessage)}`);
     });
     const safeFailures = [...new Set((failures || []).map(safeFailure).filter(value => value !== "none"))];
     lines.push("Answer mode:", `- ${answerMode === "llm" ? "LLM" : "fallback"}`,

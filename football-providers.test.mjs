@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { apiFootballHistory, apiFootballRecent, detectConflicts, fetchHistorical, fetchRecent,
     matchProviderIdentity, newsApiContext, newsRelevance, ProviderError, providerSelection,
-    seasonStartYear } from "./football-providers.mjs";
+    sanitizeProviderMessage, seasonStartYear } from "./football-providers.mjs";
 import { buildEvidence, clearKnowledgeCache, normalizeHistorical, retrieveKnowledge } from "./ball-knowledge.mjs";
 
 const tzolis = { id: 1, code: 101, first_name: "Christos", second_name: "Tzolis",
@@ -25,6 +25,8 @@ const common = matchProviderIdentity([
     { player: { id: 2, name: "Alex Smith" }, statistics: [] }
 ], { first_name: "Alex", second_name: "Smith" });
 assert.equal(common.status, "ambiguous", "common names are never silently attached");
+assert.doesNotMatch(sanitizeProviderMessage("Invalid API key SUPER_SECRET_PROVIDER_TOKEN", ["SUPER_SECRET_PROVIDER_TOKEN"]),
+    /SUPER_SECRET_PROVIDER_TOKEN/);
 
 const originalFetch = globalThis.fetch;
 let calls = [];
@@ -119,6 +121,22 @@ for (const [status, kind] of [[401, "auth"], [429, "rate_limit"]]) {
     globalThis.fetch = async () => new Response("", { status });
     try { await assert.rejects(() => fetchHistorical(tzolis, env), error => error instanceof ProviderError && error.kind === kind); }
     finally { globalThis.fetch = originalFetch; }
+}
+
+for (const [errors, kind, key] of [
+    [{ token: "Invalid API key" }, "auth", "token"],
+    [{ requests: "Request limit reached" }, "rate_limit", "requests"],
+    [{ season: "The season is not available" }, "season", "season"],
+    [{ plan: "This endpoint is not available on your plan" }, "plan", "plan"],
+    [{ search: "The player search parameter is invalid" }, "request", "search"],
+    [{ mystery: "Provider had an unknown problem" }, "upstream", "mystery"]
+]) {
+    clearKnowledgeCache(); globalThis.fetch = async () => Response.json({ errors });
+    try {
+        await assert.rejects(() => apiFootballHistory(tzolis, env), error => error instanceof ProviderError &&
+            error.kind === kind && error.providerErrorKeys.includes(key) && error.providerMessage.length <= 160 &&
+            error.stage === "identity_lookup" && error.identityLookupCompleted === false);
+    } finally { globalThis.fetch = originalFetch; }
 }
 
 globalThis.fetch = async () => Response.json({ unexpected: [] });

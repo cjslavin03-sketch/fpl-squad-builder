@@ -150,9 +150,11 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
     const cacheStatus = { historical: "skipped", recent: "skipped" };
     const attempts = {
         historical: { requested: Boolean(intent.historical), providerSelectionAttempted: false,
-            provider: null, providerConfigured: null, identityLookupAttempted: false, state: "skipped_by_intent", failureCategory: null },
+            provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null },
         recent: { requested: Boolean(intent.recent), providerSelectionAttempted: false,
-            provider: null, providerConfigured: null, identityLookupAttempted: false, state: "skipped_by_intent", failureCategory: null }
+            provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null }
     };
     if (intent.historical) try {
         const selection = providerSelection(env, "historical");
@@ -163,13 +165,19 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
             state: selection.configured ? "provider_attempted" : "provider_not_configured" });
         if (!selection.configured) { cacheStatus.historical = "not_configured"; }
         else {
+        cacheStatus.historical = willHitCache ? "hit" : "miss";
         const result = await cachedResult(cacheKey, HISTORICAL_TTL,
             () => fetchHistorical(player, env), now);
-        historical = normalizeHistorical(result.value); cacheStatus.historical = result.hit ? "hit" : "miss";
+        historical = normalizeHistorical(result.value);
         attempts.historical.state = historical?.seasons?.length ? "success" : "empty";
+        attempts.historical.identityLookupRequestCompleted = attempts.historical.identityLookupAttempted;
         }
     } catch (error) { const category = error.kind || "upstream"; failures.push(`historical:${category}`);
-        attempts.historical.state = "failed"; attempts.historical.failureCategory = category; }
+        attempts.historical.state = "failed"; attempts.historical.failureCategory = category;
+        attempts.historical.identityLookupRequestCompleted = error.identityLookupCompleted ??
+            (attempts.historical.identityLookupAttempted && error.stage !== "identity_lookup");
+        attempts.historical.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
+        attempts.historical.providerMessage = error.providerMessage || null; }
     if (intent.recent) try {
         const selection = providerSelection(env, "recent");
         const cacheKey = `r:${player.code || player.id}`;
@@ -179,19 +187,25 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
             state: selection.configured ? "provider_attempted" : "provider_not_configured" });
         if (!selection.configured) { cacheStatus.recent = "not_configured"; }
         else {
+        cacheStatus.recent = willHitCache ? "hit" : "miss";
         const result = await cachedResult(cacheKey, RECENT_TTL,
             () => fetchRecent(player, env, now), now);
-        recent = result.value; cacheStatus.recent = result.hit ? "hit" : "miss";
+        recent = result.value;
         if (recent) recent = { provider: recent.provider || null, identity: recent.identity || null,
             asOf: recent.asOf || null, items: Array.isArray(recent.items) ? recent.items : [],
             conflicts: Array.isArray(recent.conflicts) ? recent.conflicts : [], sources: normalizeSources(recent.sources),
             stale: recent.asOf ? !Number.isFinite(Date.parse(recent.asOf)) || now - Date.parse(recent.asOf) > RECENT_TTL * 1000 : true };
         if (Array.isArray(result.value?.providerFailures)) failures.push(...result.value.providerFailures.map(value => `recent-${value}`));
         attempts.recent.state = recent?.items?.length ? "success" : "empty";
+        attempts.recent.identityLookupRequestCompleted = attempts.recent.identityLookupAttempted;
         if (result.value?.providerFailures?.length) attempts.recent.failureCategory = "partial_provider_failure";
         }
     } catch (error) { const category = error.kind || "upstream"; failures.push(`recent:${category}`);
-        attempts.recent.state = "failed"; attempts.recent.failureCategory = category; }
+        attempts.recent.state = "failed"; attempts.recent.failureCategory = category;
+        attempts.recent.identityLookupRequestCompleted = error.identityLookupCompleted ??
+            (attempts.recent.identityLookupAttempted && error.stage !== "identity_lookup");
+        attempts.recent.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
+        attempts.recent.providerMessage = error.providerMessage || null; }
     return { historical, recent, failures, cache: cacheStatus, attempts };
 }
 

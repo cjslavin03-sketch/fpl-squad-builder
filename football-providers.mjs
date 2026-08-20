@@ -7,7 +7,13 @@ const TRUSTED_NEWS_DOMAINS = ["premierleague.com", "uefa.com", "bbc.co.uk", "sky
     "theathletic.com", "reuters.com", "arsenal.com", "mancity.com", "manutd.com", "liverpoolfc.com"];
 
 export class ProviderError extends Error {
-    constructor(kind, status, message) { super(message); this.name = "ProviderError"; this.kind = kind; this.status = status; }
+    constructor(kind, status, message, metadata = {}) {
+        super(message); this.name = "ProviderError"; this.kind = kind; this.status = status;
+        this.providerErrorKeys = metadata.providerErrorKeys || [];
+        this.providerMessage = metadata.providerMessage || null;
+        this.stage = metadata.stage || null;
+        this.identityLookupCompleted = metadata.identityLookupCompleted;
+    }
 }
 
 function text(value) { return value == null ? "" : String(value).trim(); }
@@ -16,6 +22,32 @@ function number(value) { if (value === null || value === undefined || value === 
 function fold(value = "") { return text(value).normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]/g, ""); }
 function dateValue(value) { const time = Date.parse(value || ""); return Number.isFinite(time) ? time : null; }
+
+export function sanitizeProviderMessage(value, secrets = []) {
+    let message = String(value ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ");
+    secrets.filter(secret => String(secret || "").length >= 4).forEach(secret => {
+        message = message.split(String(secret)).join("[redacted]");
+    });
+    return message.replace(/((?:bearer|authorization))\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+        .replace(/((?:api[-_ ]?key|token))\s*[:=]\s*[^\s,;]+/gi, "$1: [redacted]")
+        .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function providerBodyError(errors, secrets = []) {
+    const entries = Array.isArray(errors) ? errors.map((value, index) => [String(index), value]) :
+        errors && typeof errors === "object" ? Object.entries(errors) : [["unknown", errors]];
+    const keys = entries.map(([key]) => String(key).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40))
+        .filter(Boolean).slice(0, 8);
+    const message = sanitizeProviderMessage(entries.map(([, value]) => typeof value === "string" ? value :
+        JSON.stringify(value)).join("; "), secrets);
+    const signal = `${keys.join(" ")} ${message}`.toLowerCase();
+    const kind = /token|api.?key|authentic|unauthori/.test(signal) ? "auth" :
+        /request(s)?\b.*limit|rate.?limit|quota|too many/.test(signal) ? "rate_limit" :
+        /season/.test(signal) ? "season" :
+        /plan|subscription|permission|not available on your plan/.test(signal) ? "plan" :
+        /player|search|parameter|invalid request/.test(signal) ? "request" : "upstream";
+    return { kind, keys, message };
+}
 
 export function seasonStartYear(date = new Date()) {
     const value = date instanceof Date ? date : new Date(date);
@@ -45,8 +77,12 @@ async function checkedJson(url, headers, provider) {
     let body;
     try { body = await response.json(); } catch { throw new ProviderError("malformed", 502, `${provider} returned invalid JSON`); }
     if (!body || typeof body !== "object") throw new ProviderError("malformed", 502, `${provider} returned an invalid payload`);
-    if (body.errors && (Array.isArray(body.errors) ? body.errors.length : Object.keys(body.errors).length))
-        throw new ProviderError("upstream", 502, `${provider}: ${JSON.stringify(body.errors).slice(0, 240)}`);
+    if (body.errors && (Array.isArray(body.errors) ? body.errors.length : Object.keys(body.errors).length)) {
+        const classified = providerBodyError(body.errors, Object.values(headers));
+        throw new ProviderError(classified.kind, 502, `${provider} rejected the request`, {
+            providerErrorKeys: classified.keys, providerMessage: classified.message
+        });
+    }
     return body;
 }
 
@@ -116,11 +152,17 @@ async function resolveApiFootballPlayer(player, env) {
     const cacheKey = `${player.code || player.id || fold(`${player.first_name}${player.second_name}`)}:${currentSeason}`;
     const cached = identityCache.get(cacheKey);
     if (cached && Date.now() - cached.time < IDENTITY_TTL) return cached.value;
-    const body = await apiFootball(env, "/players", { search: `${player.first_name} ${player.second_name}`.trim(), season: currentSeason });
+    let body;
+    try { body = await apiFootball(env, "/players", { search: `${player.first_name} ${player.second_name}`.trim(), season: currentSeason }); }
+    catch (error) {
+        if (error instanceof ProviderError) { error.stage = "identity_lookup"; error.identityLookupCompleted = false; }
+        throw error;
+    }
     if (!Array.isArray(body.response)) throw new ProviderError("malformed", 502, "API-Football players response is missing response[]");
     const match = matchProviderIdentity(body.response, player);
     if (match.status !== "matched") throw new ProviderError(match.status === "ambiguous" ? "identity_ambiguous" : "identity_not_found", 422,
-        match.status === "ambiguous" ? "Historical player identity is ambiguous" : "Historical player identity was not found");
+        match.status === "ambiguous" ? "Historical player identity is ambiguous" : "Historical player identity was not found",
+        { stage: "identity_match", identityLookupCompleted: true });
     const value = { ...match, currentSeason };
     identityCache.set(cacheKey, { time: Date.now(), value });
     return value;

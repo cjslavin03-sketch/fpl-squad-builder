@@ -168,6 +168,21 @@ try {
     assert.doesNotMatch(productionBody.answer, /HISTORICAL_SECRET|RECENT_SECRET|LLM_SECRET|authorization/i);
     assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1);
     assert.equal(researchCalls.filter(url => url.includes("/recent")).length, 1);
+
+    clearKnowledgeCache();
+    globalThis.fetch = async () => Response.json({ errors: { token: "Invalid API key LIVE_PROVIDER_SECRET_123456789" } });
+    const rejectedProvider = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis and why the builder might underrate him.", players: [researchPlayer],
+            teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
+        { FOOTBALL_DATA_API_KEY: "LIVE_PROVIDER_SECRET_123456789", BALL_KNOWLEDGE_LOGGING: "true" });
+    const rejectedBody = await rejectedProvider.json();
+    assert.match(rejectedBody.answer, /failure category: auth/);
+    assert.match(rejectedBody.answer, /provider error keys: token/);
+    assert.match(rejectedBody.answer, /provider message: Invalid API key \[redacted\]/);
+    assert.match(rejectedBody.answer, /identity lookup request completed: no/);
+    assert.match(rejectedBody.answer, /cache: miss/);
+    assert.doesNotMatch(rejectedBody.answer, /LIVE_PROVIDER_SECRET_123456789|authorization/i);
 } finally { globalThis.fetch = originalFetch; }
 
 console.log(`worker tests passed: ${priors.length} matched, ${current.length - priors.length} fallback`);
