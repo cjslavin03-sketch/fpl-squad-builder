@@ -43,6 +43,22 @@
         return anchors[anchors.length - 1][1];
     }
 
+    function projectionPercentile(value, population) {
+        const projection = number(value);
+        const comparable = (Array.isArray(population) ? population : [])
+            .map(number)
+            .filter(candidate => Number.isFinite(candidate));
+        if (comparable.length < 2) return 0.5;
+
+        // A midrank gives tied projections exactly the same deterministic
+        // percentile. Dividing by n - 1 also lets the genuine extremes reach
+        // the ends of the presentation scale without imposing a quota.
+        const lower = comparable.filter(candidate => candidate < projection).length;
+        const equal = comparable.filter(candidate => candidate === projection).length;
+        return clamp((lower + Math.max(0, equal - 1) / 2) /
+            (comparable.length - 1), 0, 1);
+    }
+
     // Presentation-only translations of model outputs. These deliberately live
     // outside projectFixture/projectGameweek so they cannot affect projections
     // or any optimization objective.
@@ -52,6 +68,17 @@
             [0, 20], [1.5, 40], [2.5, 56], [4, 75.5], [5.5, 86],
             [7, 93], [9, 97], [12, 99]
         ]);
+        const percentile = projectionPercentile(
+            projection && projection.mean,
+            details.projectionPopulation
+        );
+        const percentileScore = interpolateScore(percentile, [
+            [0, 25], [0.25, 50], [0.5, 70], [0.75, 84],
+            [0.9, 92], [1, 97]
+        ]);
+        // Relative standing may recognize an outlier, but cannot lift a weak
+        // absolute projection by more than 4.8 Overall points (20 * 24%).
+        const relativeProjectionScore = Math.min(percentileScore, projectionScore + 20);
         const valueScore = interpolateScore(details.valueAboveReplacement, [
             [-2, 18], [-1, 34], [0, 50], [0.5, 62], [1, 73],
             [2, 86], [3.5, 94], [5, 98]
@@ -72,13 +99,16 @@
         const availabilityPenalty = (1 - clamp(number(projection && projection.availability), 0, 1)) * 25;
         const confidence = clamp(evidenceScore + priorBonus - availabilityPenalty, 5, 98);
 
-        // Expected points account for 94% of Overall. Value can move the
-        // displayed rating by at most about three points around neutral.
-        const overall = clamp(projectionScore * 0.94 + valueScore * 0.06, 0, 99);
+        // Overall is presentation-only: absolute expected-points quality stays
+        // dominant, while the current viable population supplies calibration.
+        // Value remains an independent metric and cannot affect Overall.
+        const overall = clamp(projectionScore * 0.76 + relativeProjectionScore * 0.24, 0, 99);
         const rounded = score => Number(score.toFixed(1));
         return {
             overall: rounded(overall),
             projectionScore: rounded(projectionScore),
+            projectionPercentile: rounded(percentile * 100),
+            relativeProjectionScore: rounded(relativeProjectionScore),
             valueScore: rounded(valueScore),
             minutesScore: rounded(minutesScore),
             upside: rounded(upside),
@@ -325,6 +355,6 @@
 
     return {
         POSITION, PRIORS, minutesDistribution, projectFixture, projectGameweek,
-        captainPair, displayRatings
+        captainPair, displayRatings, projectionPercentile
     };
 }));

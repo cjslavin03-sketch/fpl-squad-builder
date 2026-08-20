@@ -51,12 +51,13 @@ applied after selecting either prior path.
 ## Display ratings
 
 The `/100` Overall, Value, Minutes Security, Upside and Confidence figures are
-presentation scores, not additional prediction inputs. Overall uses a
-piecewise calibration of the independent expected-points mean (94% weight),
-with replacement value limited to a modest 6% contribution. The other display
-figures translate their corresponding model output onto intuitive bounded
-scales. None of these ratings feeds the projection model, captaincy logic or
-optimizer objective.
+presentation scores, not additional prediction inputs. Overall blends a
+piecewise calibration of the independent expected-points mean (76% weight)
+with its tied-midrank percentile among currently viable players (24% weight).
+Value is reported separately and does not contribute to Overall. The other
+display figures translate their corresponding model output onto intuitive
+bounded scales. None of these ratings feeds the projection model, captaincy
+logic or optimizer objective.
 
 ## Deliberately deferred sections
 
