@@ -2,6 +2,10 @@ const FPL_BASE = "https://fantasy.premierleague.com/api";
 const HISTORY_BASE =
     "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data";
 const CACHE_SECONDS = 6 * 60 * 60;
+import {
+    answerWithProvider, dedupeSources, detectIntent, resolvePlayers, retrieveKnowledge,
+    scoutAssessment
+} from "./ball-knowledge.mjs";
 
 function seasonFor(date = new Date()) {
     const year = date.getUTCFullYear();
@@ -171,28 +175,153 @@ async function playerPayload(date = new Date()) {
     };
 }
 
-function jsonResponse(payload, status = 200) {
+function jsonResponse(payload, status = 200, cacheControl = `public, max-age=${CACHE_SECONDS}`) {
     return new Response(JSON.stringify(payload), {
         status,
         headers: {
             "content-type": "application/json; charset=utf-8",
-            "cache-control": `public, max-age=${CACHE_SECONDS}`,
+            "cache-control": cacheControl,
             "access-control-allow-origin": "*"
         }
     });
 }
 
-async function handleRequest(request) {
+function chatPlayer(player, teams) {
+    const team = teams.find(item => Number(item.id) === Number(player.team));
+    return { id: player.id, code: player.code, first_name: String(player.first_name || ""),
+        second_name: String(player.second_name || ""), web_name: String(player.web_name || ""),
+        team: player.team, club: team?.name || player.club || "Unknown", element_type: player.element_type,
+        date_of_birth: player.date_of_birth || null, nationality: player.nationality || null,
+        position: player.position || null };
+}
+
+function cleanModel(model = {}) {
+    const numeric = key => model[key] !== null && model[key] !== undefined && model[key] !== "" &&
+        Number.isFinite(Number(model[key])) ? Number(model[key]) : null;
+    return { price: numeric("price"), overall: numeric("overall"), value: numeric("value"),
+        projectedPoints: numeric("projectedPoints"), expectedMinutes: numeric("expectedMinutes"),
+        availability: String(model.availability || "unknown").slice(0, 200),
+        fixture: String(model.fixture || "unavailable").slice(0, 200) };
+}
+
+const SAFE_FAILURES = new Set(["none", "configuration", "identity_not_found", "identity_ambiguous",
+    "auth", "rate_limit", "malformed", "upstream", "partial_provider_failure", "language_provider"]);
+function safeFailure(value) {
+    const category = String(value || "none").split(":").at(-1);
+    return SAFE_FAILURES.has(category) ? category : "upstream";
+}
+function yesNo(value) { return value === null || value === undefined ? "unknown" : value ? "yes" : "no"; }
+function safeProvider(value) { return ["api-football", "custom", "none"].includes(value) ? value : "unavailable"; }
+function safeState(value) {
+    return ["success", "empty", "failed", "skipped_by_intent", "provider_not_configured", "provider_attempted"]
+        .includes(value) ? value : "unavailable";
+}
+function safeId(value) { return value === null || value === undefined ? "unavailable" :
+    String(value).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "unavailable"; }
+
+function debugBlock(diagnostics, answerMode, failures) {
+    const lines = ["--- DEBUG ---"];
+    diagnostics.forEach((item, index) => {
+        const historical = item.providerAttempts?.historical || {};
+        const recent = item.providerAttempts?.recent || {};
+        lines.push(`Player ${index + 1}: ${safeId(item.playerId)}`,
+            "Detected intent:", `- model: ${yesNo(item.intent?.model)}`,
+            `- historical: ${yesNo(item.intent?.historical)}`, `- recent: ${yesNo(item.intent?.recent)}`,
+            "Historical retrieval:", `- requested: ${yesNo(historical.requested)}`,
+            `- cache: ${["hit", "miss", "skipped", "not_configured"].includes(item.cache?.historical) ? item.cache.historical : "unknown"}`,
+            `- provider selection attempted: ${yesNo(historical.providerSelectionAttempted)}`,
+            `- provider: ${safeProvider(historical.provider)}`, `- provider configured: ${yesNo(historical.providerConfigured)}`,
+            `- identity lookup attempted: ${yesNo(historical.identityLookupAttempted)}`,
+            `- identity matched: ${yesNo(item.historicalIdentityMatched)}`,
+            `- provider player ID: ${safeId(item.historicalProviderPlayerId)}`,
+            `- identity confidence: ${["High", "Medium", "Low", "Unavailable"].includes(item.identityConfidence) ? item.identityConfidence : "Unavailable"}`,
+            `- historical rows returned: ${Number.isInteger(item.historicalRows) ? item.historicalRows : 0}`,
+            `- status: ${safeState(historical.state)}`,
+            `- failure category: ${historical.failureCategory ? safeFailure(historical.failureCategory) : "none"}`,
+            "Recent retrieval:", `- requested: ${yesNo(recent.requested)}`,
+            `- cache: ${["hit", "miss", "skipped", "not_configured"].includes(item.cache?.recent) ? item.cache.recent : "unknown"}`,
+            `- provider selection attempted: ${yesNo(recent.providerSelectionAttempted)}`,
+            `- provider: ${safeProvider(recent.provider)}`, `- provider configured: ${yesNo(recent.providerConfigured)}`,
+            `- identity lookup attempted: ${yesNo(recent.identityLookupAttempted)}`,
+            `- identity matched: ${yesNo(item.recentIdentityMatched)}`,
+            `- provider player ID: ${safeId(item.recentProviderPlayerId)}`,
+            `- items returned: ${Number.isInteger(item.currentItems) ? item.currentItems : 0}`,
+            `- stale: ${yesNo(item.currentStale)}`, `- status: ${safeState(recent.state)}`,
+            `- failure category: ${recent.failureCategory ? safeFailure(recent.failureCategory) : "none"}`);
+    });
+    const safeFailures = [...new Set((failures || []).map(safeFailure).filter(value => value !== "none"))];
+    lines.push("Answer mode:", `- ${answerMode === "llm" ? "LLM" : "fallback"}`,
+        `Total safe failure categories: ${safeFailures.length}${safeFailures.length ? ` (${safeFailures.join(", ")})` : ""}`,
+        "--- END DEBUG ---");
+    return lines.join("\n");
+}
+
+async function handleChat(request, env) {
+    const startedAt = Date.now();
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+    const question = String(body.question || "").trim().slice(0, 1000);
+    const livePlayers = Array.isArray(body.players) ? body.players.slice(0, 750) : [];
+    const teams = Array.isArray(body.teams) ? body.teams : [];
+    if (!question || !livePlayers.length) return jsonResponse({ error: "Question and live player context are required" }, 400);
+    const result = resolvePlayers(question, livePlayers, Array.isArray(body.contextPlayerIds) ? body.contextPlayerIds : []);
+    if (result.status === "not_found") return jsonResponse({ error: "Player not found", code: "PLAYER_NOT_FOUND" }, 404);
+    if (result.status === "ambiguous") return jsonResponse({ error: "Which player did you mean?", code: "AMBIGUOUS_PLAYER",
+        candidates: result.players.map(player => `${player.first_name} ${player.second_name}`) }, 409);
+    const intent = detectIntent(question);
+    const contexts = [];
+    for (const raw of result.players) {
+        const player = chatPlayer(raw, teams);
+        const model = cleanModel(body.modelById?.[raw.id]);
+        const knowledge = await retrieveKnowledge(player, intent, env || {});
+        const scout = scoutAssessment(model, knowledge.historical, knowledge.recent);
+        contexts.push({ player: { ...player, name: `${player.first_name} ${player.second_name}`.trim(),
+            position: { 1: "GK", 2: "DEF", 3: "MID", 4: "FWD" }[player.element_type] || "Unknown" },
+        model, knowledge, scout });
+    }
+    let answer;
+    let answerMode = env?.LLM_API_URL && env?.LLM_API_KEY ? "llm" : "fallback";
+    try { answer = await answerWithProvider(question, contexts, env || {}); }
+    catch { answer = await answerWithProvider(question, contexts, {}); answerMode = "fallback"; contexts[0].knowledge.failures.push("language_provider"); }
+    const sources = dedupeSources(contexts.flatMap(context => [
+        ...(context.knowledge.historical?.sources || []), ...(context.knowledge.recent?.sources || [])
+    ]));
+    const diagnostics = contexts.map(context => ({ playerId: context.player.id, intent,
+        providerPlayerId: context.knowledge.historical?.providerPlayerId || context.knowledge.recent?.identity?.providerPlayerId || null,
+        historicalProviderPlayerId: context.knowledge.historical?.providerPlayerId || null,
+        recentProviderPlayerId: context.knowledge.recent?.identity?.providerPlayerId || null,
+        historicalIdentityMatched: context.knowledge.historical?.identity?.status === "matched",
+        recentIdentityMatched: Boolean(context.knowledge.recent?.identity?.providerPlayerId),
+        identityConfidence: context.knowledge.historical?.identity?.confidence || context.knowledge.recent?.identity?.confidence || "Unavailable",
+        historicalRows: context.knowledge.historical?.seasons?.length || 0,
+        currentItems: context.knowledge.recent?.items?.length || 0, currentAsOf: context.knowledge.recent?.asOf || null,
+        currentStale: context.knowledge.recent?.stale ?? null, cache: context.knowledge.cache,
+        providerAttempts: context.knowledge.attempts }));
+    if (env?.BALL_KNOWLEDGE_LOGGING === "true") console.info("ball-knowledge", JSON.stringify({
+        players: diagnostics.map(item => ({ playerId: item.playerId, providerPlayerId: item.providerPlayerId,
+            identityConfidence: item.identityConfidence, intent: item.intent, cache: item.cache,
+            providerAttempts: item.providerAttempts })), answerMode,
+        failures: contexts.flatMap(c => c.knowledge.failures), latencyMs: Date.now() - startedAt }));
+    const safeFailures = contexts.flatMap(c => c.knowledge.failures);
+    if (env?.BALL_KNOWLEDGE_LOGGING === "true") answer += `\n\n${debugBlock(diagnostics, answerMode, safeFailures)}`;
+    return jsonResponse({ answer, answerMode, players: contexts.map(context => ({ id: context.player.id,
+        name: context.player.name, model: context.model, scout: context.scout })), diagnostics, sources,
+        failures: safeFailures }, 200, "no-store");
+}
+
+async function handleRequest(request, env = {}) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") {
         return new Response(null, {
             status: 204,
             headers: {
                 "access-control-allow-origin": "*",
-                "access-control-allow-methods": "GET, OPTIONS"
+                "access-control-allow-methods": "GET, POST, OPTIONS",
+                "access-control-allow-headers": "content-type"
             }
         });
     }
+    if (url.pathname === "/api/ball-knowledge" && request.method === "POST") return handleChat(request, env);
     if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405);
     if (url.pathname === "/api/fixtures") {
         const response = await fetchChecked(`${FPL_BASE}/fixtures/`);
@@ -214,4 +343,4 @@ async function handleRequest(request) {
 }
 
 export default { fetch: handleRequest };
-export { addAppearances, matchHistoricalPlayers, parseCsv, playerPayload, previousSeason, seasonFor };
+export { addAppearances, cleanModel, debugBlock, handleRequest, matchHistoricalPlayers, parseCsv, playerPayload, previousSeason, seasonFor };

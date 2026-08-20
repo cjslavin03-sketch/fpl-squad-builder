@@ -1,3 +1,9 @@
 name = "jolly-glitter-bb07"
 main = "worker.mjs"
 compatibility_date = "2026-08-19"
+
+[vars]
+FOOTBALL_DATA_PROVIDER = "api-football"
+FOOTBALL_CONTEXT_PROVIDER = "api-football"
+FOOTBALL_HISTORY_SEASONS = "6"
+BALL_KNOWLEDGE_LOGGING = "false"

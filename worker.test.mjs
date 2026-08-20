@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import {
-    addAppearances, matchHistoricalPlayers, parseCsv, playerPayload,
+    addAppearances, cleanModel, handleRequest, matchHistoricalPlayers, parseCsv, playerPayload,
     previousSeason, seasonFor
 } from "./worker.mjs";
+import { clearKnowledgeCache } from "./ball-knowledge.mjs";
 
 assert.equal(seasonFor(new Date("2026-08-19T00:00:00Z")), "2026-27");
 assert.equal(previousSeason("2026-27"), "2025-26");
@@ -75,5 +76,98 @@ try {
 } finally {
     globalThis.fetch = originalFetch;
 }
+
+assert.deepEqual(cleanModel({ price: 7.5, overall: 74, value: 61, projectedPoints: 4.3,
+    expectedMinutes: 68, availability: "available", ignored: "not passed" }), {
+    price: 7.5, overall: 74, value: 61, projectedPoints: 4.3, expectedMinutes: 68,
+    availability: "available", fixture: "unavailable"
+}, "only authoritative model fields enter chat context");
+assert.equal(cleanModel({ overall: null }).overall, null, "unavailable Model View values never become zero");
+
+const chatResponse = await handleRequest(new Request("https://worker.test/api/ball-knowledge", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        question: "What is Haaland's Overall?", players: current, teams: [{ id: 1, name: "City" }],
+        modelById: { 101: { price: 14, overall: 91, value: 70, projectedPoints: 7.2, expectedMinutes: 84 } }
+    })
+}), { BALL_KNOWLEDGE_LOGGING: "true", FOOTBALL_DATA_API_KEY: "MODEL_ONLY_SECRET" });
+assert.equal(chatResponse.status, 200);
+const chat = await chatResponse.json();
+assert.match(chat.answer, /Overall: 91/);
+assert.match(chat.answer, /projected points: 7.2/);
+assert.equal(chat.players[0].scout.rating, null, "no fabricated Scout Rating without history");
+assert.match(chat.answer, /--- DEBUG ---/); assert.match(chat.answer, /status: skipped_by_intent/);
+assert.doesNotMatch(chat.answer, /MODEL_ONLY_SECRET|authorization/i);
+
+const missingResponse = await handleRequest(new Request("https://worker.test/api/ball-knowledge", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: "Tell me about Nobody", players: current })
+}));
+assert.equal(missingResponse.status, 404);
+
+let researchCalls = [];
+globalThis.fetch = async url => {
+    researchCalls.push(String(url));
+    if (String(url).includes("/history")) return Response.json({ provider: "fixture", identity: { confidence: "High" },
+        seasons: [{ season: "2025-26", club: "Club Brugge", competition: "First Division A",
+            country: "Belgium", appearances: 30, starts: 27, minutes: 2400, goals: 14, assists: 8 }],
+        sources: [{ title: "Stats provider", url: "https://stats.example/tzolis", category: "career", supports: ["2025-26 season"] }] });
+    if (String(url).includes("/recent")) return Response.json({ asOf: new Date().toISOString(),
+        items: [{ kind: "transfer", date: "2026-07-01", summary: "Club Brugge to Arsenal" }],
+        sources: [{ title: "Club announcement", url: "https://club.example/tzolis", category: "transfer", supports: ["transfer"] }] });
+    throw new Error("unexpected request");
+};
+try {
+    const researchPlayer = { id: 501, code: 9001, first_name: "Christos", second_name: "Tzolis",
+        web_name: "Tzolis", team: 1, element_type: 3 };
+    clearKnowledgeCache();
+    const deep = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis career history", players: [researchPlayer],
+            teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { price: 6.5, overall: 64,
+                value: 58, projectedPoints: 3.4, expectedMinutes: 61 } } }) }),
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
+    assert.equal(deep.status, 200); const deepBody = await deep.json();
+    assert.match(deepBody.answer, /Club Brugge, First Division A/); assert.equal(deepBody.sources[0].category, "career");
+    assert.equal(deepBody.diagnostics[0].cache.historical, "miss"); assert.equal(deepBody.answerMode, "fallback");
+    assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1);
+    assert.equal(researchCalls.some(url => url.includes("/recent")), false, "career-only intent avoids news retrieval");
+
+    const cachedDeep = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis career", players: [researchPlayer], teams: [{ id: 1, name: "Arsenal" }],
+            modelById: { 501: { overall: 64 } } }) }), { FOOTBALL_DATA_URL: "https://adapter.test" });
+    const cachedBody = await cachedDeep.json(); assert.equal(cachedBody.diagnostics[0].cache.historical, "hit");
+    assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1, "history cache prevents repeated provider calls");
+
+    const currentRole = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "What is Tzolis current role?",
+            players: [researchPlayer], teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
+    assert.equal(currentRole.status, 200); const roleBody = await currentRole.json();
+    assert.match(roleBody.answer, /Club Brugge to Arsenal/); assert.equal(roleBody.sources[0].category, "transfer");
+
+    clearKnowledgeCache(); researchCalls = [];
+    const productionQuery = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis and why the builder might underrate him.", players: [researchPlayer],
+            teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
+    const productionBody = await productionQuery.json();
+    assert.deepEqual(productionBody.diagnostics[0].intent, { model: true, historical: true, recent: true });
+    assert.equal(productionBody.diagnostics[0].providerAttempts.historical.state, "success");
+    assert.equal(productionBody.diagnostics[0].providerAttempts.recent.state, "success");
+    assert.match(productionBody.answer, /--- DEBUG ---/);
+    assert.match(productionBody.answer, /historical: yes/); assert.match(productionBody.answer, /recent: yes/);
+    assert.match(productionBody.answer, /provider selection attempted: yes/);
+    assert.doesNotMatch(productionBody.answer, /HISTORICAL_SECRET|RECENT_SECRET|LLM_SECRET|authorization/i);
+    assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1);
+    assert.equal(researchCalls.filter(url => url.includes("/recent")).length, 1);
+} finally { globalThis.fetch = originalFetch; }
 
 console.log(`worker tests passed: ${priors.length} matched, ${current.length - priors.length} fallback`);
