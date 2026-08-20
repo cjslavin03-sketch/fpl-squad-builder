@@ -53,10 +53,10 @@ export function resolvePlayers(query, players, contextIds = []) {
 
 export function detectIntent(question) {
     const q = foldName(question);
-    return {
-        historical: /career|history|last season|previous|stats|good|scout|underrat|overrat/.test(q),
-        recent: /current|recent|transfer|injur|suspend|start|lineup|preseason|manager|role|set piece|underrat|overrat|outlook|trap|upside|risk/.test(q)
-    };
+    const interpretive = /underrat|overrat|rated too|rated so|why .* rated|outlook|trap|upside|risk/.test(q);
+    const historical = /tell me about|career|history|last season|previous|stats|statistics|production|good|scout/.test(q) || interpretive;
+    const recent = /current|recent|transfer|injur|suspend|start|starting|lineup|preseason|manager|role|set piece/.test(q) || interpretive;
+    return { model: true, historical, recent };
 }
 
 export function normalizeHistorical(raw) {
