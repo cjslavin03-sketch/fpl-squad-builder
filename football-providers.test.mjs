@@ -7,7 +7,8 @@ import { buildEvidence, clearKnowledgeCache, normalizeHistorical, retrieveKnowle
 const tzolis = { id: 1, code: 101, first_name: "Christos", second_name: "Tzolis",
     club: "Arsenal", nationality: "Greece", position: "MID", date_of_birth: "2002-01-30" };
 const env = { FOOTBALL_DATA_PROVIDER: "api-football", FOOTBALL_CONTEXT_PROVIDER: "api-football",
-    FOOTBALL_DATA_API_KEY: "server-secret", FOOTBALL_CURRENT_SEASON: "2026", FOOTBALL_HISTORY_SEASONS: "2" };
+    FOOTBALL_DATA_API_KEY: "server-secret", FOOTBALL_CURRENT_SEASON: "2026", FOOTBALL_HISTORY_SEASONS: "2",
+    FOOTBALL_API_MIN_INTERVAL_MS: "0", FOOTBALL_API_RATE_LIMIT_COOLDOWN_MS: "1000" };
 const now = Date.parse("2026-08-20T00:00:00Z");
 
 assert.deepEqual(providerSelection({}, "historical"), { name: "api-football", configured: false });
@@ -118,6 +119,7 @@ try {
 } finally { globalThis.fetch = originalFetch; }
 
 for (const [status, kind] of [[401, "auth"], [429, "rate_limit"]]) {
+    clearKnowledgeCache();
     globalThis.fetch = async () => new Response("", { status });
     try { await assert.rejects(() => fetchHistorical(tzolis, env), error => error instanceof ProviderError && error.kind === kind); }
     finally { globalThis.fetch = originalFetch; }

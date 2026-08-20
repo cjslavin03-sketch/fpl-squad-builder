@@ -159,12 +159,17 @@ try {
             FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
             LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
     const productionBody = await productionQuery.json();
-    assert.deepEqual(productionBody.diagnostics[0].intent, { model: true, historical: true, recent: true });
+    assert.deepEqual({ model: productionBody.diagnostics[0].intent.model,
+        historical: productionBody.diagnostics[0].intent.historical,
+        recent: productionBody.diagnostics[0].intent.recent }, { model: true, historical: true, recent: true });
     assert.equal(productionBody.diagnostics[0].providerAttempts.historical.state, "success");
     assert.equal(productionBody.diagnostics[0].providerAttempts.recent.state, "success");
     assert.match(productionBody.answer, /--- DEBUG ---/);
     assert.match(productionBody.answer, /historical: yes/); assert.match(productionBody.answer, /recent: yes/);
     assert.match(productionBody.answer, /provider selection attempted: yes/);
+    assert.match(productionBody.answer, /API-Football request metrics:/);
+    assert.match(productionBody.answer, /history depth requested: 2/);
+    assert.match(productionBody.answer, /partial result: no/);
     assert.doesNotMatch(productionBody.answer, /HISTORICAL_SECRET|RECENT_SECRET|LLM_SECRET|authorization/i);
     assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1);
     assert.equal(researchCalls.filter(url => url.includes("/recent")).length, 1);

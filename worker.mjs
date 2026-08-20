@@ -244,6 +244,9 @@ function debugBlock(diagnostics, answerMode, failures) {
             `- provider player ID: ${safeId(item.historicalProviderPlayerId)}`,
             `- identity confidence: ${["High", "Medium", "Low", "Unavailable"].includes(item.identityConfidence) ? item.identityConfidence : "Unavailable"}`,
             `- historical rows returned: ${Number.isInteger(item.historicalRows) ? item.historicalRows : 0}`,
+            `- history depth requested: ${Number.isInteger(item.historyDepthRequested) ? item.historyDepthRequested : 0}`,
+            `- history seasons successfully returned: ${Array.isArray(item.historySeasonsReturned) ? item.historySeasonsReturned.join(", ") || "none" : "none"}`,
+            `- partial result: ${yesNo(item.historicalPartial)}`,
             `- status: ${safeState(historical.state)}`,
             `- failure category: ${historical.failureCategory ? safeFailure(historical.failureCategory) : "none"}`,
             `- provider error keys: ${safeErrorKeys(historical.providerErrorKeys).join(", ") || "none"}`,
@@ -261,6 +264,11 @@ function debugBlock(diagnostics, answerMode, failures) {
             `- failure category: ${recent.failureCategory ? safeFailure(recent.failureCategory) : "none"}`,
             `- provider error keys: ${safeErrorKeys(recent.providerErrorKeys).join(", ") || "none"}`,
             `- provider message: ${safeProviderMessage(recent.providerMessage)}`);
+        lines.push("API-Football request metrics:",
+            `- total calls attempted: ${item.providerMetrics?.callsAttempted || 0}`,
+            `- calls served from cache: ${item.providerMetrics?.callsFromCache || 0}`,
+            `- calls coalesced: ${item.providerMetrics?.callsCoalesced || 0}`,
+            `- calls rate-limited: ${item.providerMetrics?.callsRateLimited || 0}`);
     });
     const safeFailures = [...new Set((failures || []).map(safeFailure).filter(value => value !== "none"))];
     lines.push("Answer mode:", `- ${answerMode === "llm" ? "LLM" : "fallback"}`,
@@ -299,7 +307,16 @@ async function handleChat(request, env) {
     const sources = dedupeSources(contexts.flatMap(context => [
         ...(context.knowledge.historical?.sources || []), ...(context.knowledge.recent?.sources || [])
     ]));
-    const diagnostics = contexts.map(context => ({ playerId: context.player.id, intent,
+    const diagnostics = contexts.map(context => {
+        const metrics = [context.knowledge.historical?.metrics, context.knowledge.recent?.metrics,
+            context.knowledge.attempts?.historical?.providerMetrics,
+            context.knowledge.attempts?.recent?.providerMetrics].filter(Boolean);
+        const providerMetrics = metrics.reduce((total, item) => ({ callsAttempted: total.callsAttempted + (item.callsAttempted || 0),
+            callsFromCache: total.callsFromCache + (item.callsFromCache || 0),
+            callsCoalesced: total.callsCoalesced + (item.callsCoalesced || 0),
+            callsRateLimited: total.callsRateLimited + (item.callsRateLimited || 0) }),
+        { callsAttempted: 0, callsFromCache: 0, callsCoalesced: 0, callsRateLimited: 0 });
+        return { playerId: context.player.id, intent,
         providerPlayerId: context.knowledge.historical?.providerPlayerId || context.knowledge.recent?.identity?.providerPlayerId || null,
         historicalProviderPlayerId: context.knowledge.historical?.providerPlayerId || null,
         recentProviderPlayerId: context.knowledge.recent?.identity?.providerPlayerId || null,
@@ -307,9 +324,13 @@ async function handleChat(request, env) {
         recentIdentityMatched: Boolean(context.knowledge.recent?.identity?.providerPlayerId),
         identityConfidence: context.knowledge.historical?.identity?.confidence || context.knowledge.recent?.identity?.confidence || "Unavailable",
         historicalRows: context.knowledge.historical?.seasons?.length || 0,
+        historyDepthRequested: context.knowledge.historical?.historyDepthRequested || intent.historyDepth || 0,
+        historySeasonsReturned: context.knowledge.historical?.historySeasonsReturned || [],
+        historicalPartial: context.knowledge.historical?.partial || false,
         currentItems: context.knowledge.recent?.items?.length || 0, currentAsOf: context.knowledge.recent?.asOf || null,
         currentStale: context.knowledge.recent?.stale ?? null, cache: context.knowledge.cache,
-        providerAttempts: context.knowledge.attempts }));
+        providerAttempts: context.knowledge.attempts, providerMetrics };
+    });
     if (env?.BALL_KNOWLEDGE_LOGGING === "true") console.info("ball-knowledge", JSON.stringify({
         players: diagnostics.map(item => ({ playerId: item.playerId, providerPlayerId: item.providerPlayerId,
             identityConfidence: item.identityConfidence, intent: item.intent, cache: item.cache,

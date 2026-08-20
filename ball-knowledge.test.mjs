@@ -26,8 +26,15 @@ const intentCases = [
     ["Give me Tzolis' career history.", true, false],
     ["Is Tzolis injured?", false, true]
 ];
-intentCases.forEach(([question, historicalIntent, recentIntent]) => assert.deepEqual(
-    detectIntent(question), { model: true, historical: historicalIntent, recent: recentIntent }, question));
+intentCases.forEach(([question, historicalIntent, recentIntent]) => {
+    const intent = detectIntent(question);
+    assert.deepEqual({ model: intent.model, historical: intent.historical, recent: intent.recent },
+        { model: true, historical: historicalIntent, recent: recentIntent }, question);
+});
+assert.equal(detectIntent("What did Tzolis do last season?").historyDepth, 1);
+assert.equal(detectIntent("Give me Tzolis' full career history.").historyDepth, 6);
+assert.deepEqual(detectIntent("Is Tzolis injured?").currentContext,
+    { transfers: false, injuries: true, news: false });
 
 const historical = normalizeHistorical({ seasons: [{ season: "2025-26", club: "Example",
     minutes: "1800", appearances: "25", goals: "12", assists: "8", xG: "9.1" }],
@@ -48,6 +55,13 @@ assert.ok(scout.rating > model.overall);
 assert.equal(scout.disagreement, "positive");
 assert.deepEqual(model, before, "Scout Rating never mutates model values");
 assert.equal(scoutAssessment(model, null, null).rating, null);
+const partialHistory = normalizeHistorical({ identity: { confidence: "High" }, partial: true,
+    seasons: [{ season: "2025", club: "A", competition: "League", minutes: 900, goals: 5 }] });
+assert.equal(scoutAssessment(model, partialHistory, null).confidence, "Low");
+const partialAnswer = await answerWithProvider("career", [{ player: { name: "Tzolis", position: "MID", club: "Arsenal" },
+    model, scout: scoutAssessment(model, partialHistory, null),
+    knowledge: { historical: partialHistory, recent: null, failures: ["historical-history:rate_limit"] } }], {});
+assert.match(partialAnswer, /Recent historical data is available/);
 assert.match(buildPrompt("Question", [{ model }]), /Never invent statistics/);
 assert.match(buildPrompt("Question", [{ model }]), /Separate Model View/);
 

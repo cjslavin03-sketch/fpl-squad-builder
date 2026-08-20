@@ -55,12 +55,20 @@ export function detectIntent(question) {
     const q = foldName(question);
     const ratingInterpretation = /why .*rat|rated .*low|rated .*high|rating .*low|rating .*high/.test(q);
     const disagreement = /underrat|overrat/.test(q);
+    const lastSeason = /last season|previous season/.test(q);
+    const fullCareer = /full career|entire career|complete career/.test(q);
+    const transfers = /transfer|signed|signing|move|this summer/.test(q);
+    const injuries = /injur|fit|available|doubt|sidelined|suspend/.test(q);
+    const news = /current|recent|start|lineup|preseason|manager|role|set piece|outlook|trap|upside|risk/.test(q) ||
+        disagreement || ratingInterpretation;
     return {
         model: true,
         historical: /tell me about|career|history|last season|previous|stats|good|scout/.test(q) ||
             disagreement || ratingInterpretation,
-        recent: /current|recent|transfer|injur|suspend|start|lineup|preseason|manager|role|set piece|outlook|trap|upside|risk/.test(q) ||
-            disagreement || ratingInterpretation
+        recent: transfers || injuries || news,
+        historyDepth: lastSeason ? 1 : fullCareer ? 6 : 2,
+        fullCareer,
+        currentContext: { transfers, injuries, news }
     };
 }
 
@@ -85,7 +93,10 @@ export function normalizeHistorical(raw) {
     return { provider: raw.provider || "custom", providerPlayerId: raw.providerPlayerId || null,
         identity: raw.identity || { status: "unverified", confidence: "Low", signals: [] },
         birthDate: raw.birthDate || null, age: numberOrNull(raw.age), nationality: raw.nationality || null,
-        positions: arrayStrings(raw.positions), seasons, international: raw.international || null,
+        positions: arrayStrings(raw.positions), seasons, partial: Boolean(raw.partial),
+        providerFailures: arrayStrings(raw.providerFailures), metrics: raw.metrics || null,
+        historyDepthRequested: numberOrNull(raw.historyDepthRequested),
+        historySeasonsReturned: arrayStrings(raw.historySeasonsReturned), international: raw.international || null,
         sources: normalizeSources(raw.sources) };
 }
 
@@ -123,7 +134,8 @@ export function scoutAssessment(model, historical, recent) {
     const delta = rating - overall;
     const evidenceConfidence = rows.length >= 3 && recent ? "High" : rows.length >= 2 ? "Medium" : "Low";
     const identityConfidence = historical.identity?.confidence || "Low";
-    const confidence = identityConfidence === "Low" ? "Low" : identityConfidence === "Medium" && evidenceConfidence === "High" ? "Medium" : evidenceConfidence;
+    const confidence = historical.partial || identityConfidence === "Low" ? "Low" :
+        identityConfidence === "Medium" && evidenceConfidence === "High" ? "Medium" : evidenceConfidence;
     return { rating, confidence,
         delta, disagreement: delta >= 8 ? "positive" : delta <= -8 ? "negative" : "aligned" };
 }
@@ -151,14 +163,14 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
     const attempts = {
         historical: { requested: Boolean(intent.historical), providerSelectionAttempted: false,
             provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
-            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null },
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null },
         recent: { requested: Boolean(intent.recent), providerSelectionAttempted: false,
             provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
-            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null }
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null }
     };
     if (intent.historical) try {
         const selection = providerSelection(env, "historical");
-        const cacheKey = `h:${player.code || player.id}`;
+        const cacheKey = `h:${player.code || player.id}:${intent.historyDepth || 2}:${intent.fullCareer ? "full" : "recent"}`;
         const willHitCache = cacheHasFresh(cacheKey, HISTORICAL_TTL, now);
         Object.assign(attempts.historical, { providerSelectionAttempted: true, provider: selection.name,
             providerConfigured: selection.configured, identityLookupAttempted: selection.name === "api-football" && selection.configured && !willHitCache,
@@ -167,8 +179,14 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
         else {
         cacheStatus.historical = willHitCache ? "hit" : "miss";
         const result = await cachedResult(cacheKey, HISTORICAL_TTL,
-            () => fetchHistorical(player, env), now);
+            () => fetchHistorical(player, env, { depth: intent.historyDepth, fullCareer: intent.fullCareer }), now);
         historical = normalizeHistorical(result.value);
+        if (historical?.partial) cache.delete(cacheKey);
+        if (historical?.providerFailures?.length) {
+            failures.push(...historical.providerFailures.map(value => `historical-${value}`));
+            attempts.historical.failureCategory = historical.providerFailures.some(value => value.includes("rate_limit")) ?
+                "rate_limit" : "partial_provider_failure";
+        }
         attempts.historical.state = historical?.seasons?.length ? "success" : "empty";
         attempts.historical.identityLookupRequestCompleted = attempts.historical.identityLookupAttempted;
         }
@@ -177,24 +195,30 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
         attempts.historical.identityLookupRequestCompleted = error.identityLookupCompleted ??
             (attempts.historical.identityLookupAttempted && error.stage !== "identity_lookup");
         attempts.historical.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
-        attempts.historical.providerMessage = error.providerMessage || null; }
+        attempts.historical.providerMessage = error.providerMessage || null;
+        attempts.historical.providerMetrics = error.providerMetrics || null; }
     if (intent.recent) try {
         const selection = providerSelection(env, "recent");
-        const cacheKey = `r:${player.code || player.id}`;
+        const current = intent.currentContext || {};
+        const needsProviderIdentity = Boolean(current.transfers || current.injuries);
+        const cacheKey = `r:${player.code || player.id}:${current.transfers ? 1 : 0}:${current.injuries ? 1 : 0}:${current.news ? 1 : 0}`;
         const willHitCache = cacheHasFresh(cacheKey, RECENT_TTL, now);
         Object.assign(attempts.recent, { providerSelectionAttempted: true, provider: selection.name,
-            providerConfigured: selection.configured, identityLookupAttempted: selection.name === "api-football" && selection.configured && !willHitCache,
+            providerConfigured: selection.configured, identityLookupAttempted: selection.name === "api-football" &&
+                selection.configured && needsProviderIdentity && !willHitCache,
             state: selection.configured ? "provider_attempted" : "provider_not_configured" });
         if (!selection.configured) { cacheStatus.recent = "not_configured"; }
         else {
         cacheStatus.recent = willHitCache ? "hit" : "miss";
         const result = await cachedResult(cacheKey, RECENT_TTL,
-            () => fetchRecent(player, env, now), now);
+            () => fetchRecent(player, env, now, current), now);
         recent = result.value;
+        if (recent?.partial) cache.delete(cacheKey);
         if (recent) recent = { provider: recent.provider || null, identity: recent.identity || null,
             asOf: recent.asOf || null, items: Array.isArray(recent.items) ? recent.items : [],
             conflicts: Array.isArray(recent.conflicts) ? recent.conflicts : [], sources: normalizeSources(recent.sources),
-            stale: recent.asOf ? !Number.isFinite(Date.parse(recent.asOf)) || now - Date.parse(recent.asOf) > RECENT_TTL * 1000 : true };
+            stale: recent.asOf ? !Number.isFinite(Date.parse(recent.asOf)) || now - Date.parse(recent.asOf) > RECENT_TTL * 1000 : true,
+            partial: Boolean(recent.partial), providerFailures: arrayStrings(recent.providerFailures), metrics: recent.metrics || null };
         if (Array.isArray(result.value?.providerFailures)) failures.push(...result.value.providerFailures.map(value => `recent-${value}`));
         attempts.recent.state = recent?.items?.length ? "success" : "empty";
         attempts.recent.identityLookupRequestCompleted = attempts.recent.identityLookupAttempted;
@@ -205,7 +229,8 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
         attempts.recent.identityLookupRequestCompleted = error.identityLookupCompleted ??
             (attempts.recent.identityLookupAttempted && error.stage !== "identity_lookup");
         attempts.recent.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
-        attempts.recent.providerMessage = error.providerMessage || null; }
+        attempts.recent.providerMessage = error.providerMessage || null;
+        attempts.recent.providerMetrics = error.providerMetrics || null; }
     return { historical, recent, failures, cache: cacheStatus, attempts };
 }
 
@@ -246,6 +271,7 @@ function fallbackAnswer(context) {
     if (context.knowledge.historical?.seasons?.length) lines.push(`**Career / production**\n${context.knowledge.historical.seasons.map(x =>
         `${x.season}: ${x.club}, ${x.competition || "competition unavailable"} — ${x.appearances ?? "?"} apps, ${x.starts ?? "?"} starts, ${x.minutes ?? "?"} minutes, ${x.goals ?? "?"} goals, ${x.assists ?? "?"} assists${x.xG != null ? `, ${x.xG} xG` : ""}${x.xA != null ? `, ${x.xA} xA` : ""}`).join("\n")}`);
     else lines.push("**Career / production**\nReliable deeper historical data is currently unavailable; I will not invent it.");
+    if (context.knowledge.historical?.partial) lines.push("Recent historical data is available, but deeper retrieval is temporarily limited by the provider.");
     if (context.knowledge.recent && !context.knowledge.recent.stale) lines.push(`**Current situation** (as of ${context.knowledge.recent.asOf})\n${context.knowledge.recent.items.length ?
         context.knowledge.recent.items.map(item => `${item.date || "date unavailable"}: ${item.summary}`).join("\n") : "The provider returned no recent transfer or injury records."}${context.knowledge.recent.conflicts?.length ? `\nUncertainty: ${context.knowledge.recent.conflicts.map(item => item.note).join(" ")}` : ""}`);
     else lines.push("**Current situation**\nVerified recent context is unavailable or stale, so no current lineup, injury, transfer, or preseason claim is made.");
