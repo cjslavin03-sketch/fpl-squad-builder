@@ -175,19 +175,21 @@ assert.ok(
     "current-season performance must increasingly outweigh prior-season performance"
 );
 
-const displayRating = mean => model.displayRatings({
+const representativePopulation = [1.5, 2.5, 3.2, 4, 4.7, 5.5, 6.2, 7];
+const displayRating = (mean, population = representativePopulation) => model.displayRatings({
     mean,
     ceiling: mean + 3,
     expectedMinutes: 80,
     availability: 1,
     priorSource: "position"
-}, { valueAboveReplacement: 0, seasonMinutes: 900 }).overall;
-const representativeRatings = [2.5, 4, 5.5, 7].map(displayRating);
-assert.deepEqual(
-    representativeRatings,
-    [55.6, 74, 83.8, 90.4],
-    "representative one-match projections should have intuitive display ratings"
-);
+}, {
+    valueAboveReplacement: 0,
+    seasonMinutes: 900,
+    projectionPopulation: population
+}).overall;
+const representativeRatings = [2.5, 4, 5.5, 7].map(mean => displayRating(mean));
+assert.ok(representativeRatings[3] >= 93 && representativeRatings[3] <= 97,
+    "an elite top-of-population projection should reach the elite band");
 assert.ok(representativeRatings[0] < 62, "2.5 expected points must not look elite");
 assert.ok(representativeRatings[1] >= 70, "4 expected points should look solid");
 assert.ok(representativeRatings[2] >= 82, "5.5 expected points should look very strong");
@@ -195,6 +197,35 @@ assert.ok(representativeRatings[3] >= 88, "7 expected points should look elite")
 assert.ok(representativeRatings.every((rating, index, ratings) =>
     index === 0 || rating > ratings[index - 1]
 ), "Overall display calibration must be monotonic");
+assert.ok(displayRating(3.5) >= 60 && displayRating(3.5) < 70,
+    "an average projection should remain in the situational band");
+assert.ok(displayRating(2) < 60,
+    "a weak projection should remain in the weak/risky band");
+
+assert.ok(displayRating(3, [0.5, 1, 1.5, 2, 2.5, 3]) < 70,
+    "the best player in an unusually weak pool must not look strong");
+assert.ok(displayRating(7, [7, 7.5, 8, 8.5, 9]) >= 75,
+    "an excellent absolute projection must retain a strong floor in an unusually strong pool");
+assert.equal(model.projectionPercentile(4, [2, 4, 4, 6]), 0.5,
+    "ties should receive the same midrank percentile");
+assert.equal(model.projectionPercentile(4, [4]), 0.5,
+    "a one-player pool should use a neutral percentile");
+assert.equal(displayRating(4, [4]), displayRating(4, []),
+    "small or missing populations should behave deterministically");
+
+const tiedRatings = [3, 4, 4, 5].map(mean => displayRating(mean, [3, 4, 4, 5]));
+assert.equal(tiedRatings[1], tiedRatings[2], "tied projections must receive tied ratings");
+assert.ok(tiedRatings.every((rating, index) => index === 0 || rating >= tiedRatings[index - 1]),
+    "percentile calibration must preserve monotonic ordering, including ties");
+
+const cheapDisplay = model.displayRatings({ mean: 5, expectedMinutes: 80 }, {
+    valueAboveReplacement: 5, projectionPopulation: representativePopulation
+});
+const poorValueDisplay = model.displayRatings({ mean: 5, expectedMinutes: 80 }, {
+    valueAboveReplacement: -2, projectionPopulation: representativePopulation
+});
+assert.equal(cheapDisplay.overall, poorValueDisplay.overall,
+    "value must remain separate from Overall");
 
 const calibratedDisplays = model.displayRatings({
     mean: 5.5,

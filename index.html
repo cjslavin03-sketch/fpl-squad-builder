@@ -1086,6 +1086,7 @@ let teams = [];
 let fixtures = [];
 let fixturesLoaded = false;
 let previousSeasonPlayers = new Map();
+let viableProjectionPopulation = [];
 let squad = [];
 let lockedPlayerIds = new Set();
 function updateSquadStats() {
@@ -1290,6 +1291,14 @@ async function loadFPL() {
             fixtures.length +
             " fixtures.";
 
+        viableProjectionPopulation = players
+            .filter(player => !["i", "s", "u"].includes(player.status))
+            .map(player => FPLModel.projectFixture(
+                player, null, getProjectionContext(player)
+            ))
+            .filter(projection => projection.availability > 0 && projection.expectedMinutes >= 20)
+            .map(projection => projection.mean);
+
 loadSavedSquad();
         renderPlayers();
 
@@ -1449,7 +1458,8 @@ function calculateAnalytics(player) {
         Math.max(0.5, price - replacementPrice);
     const displayRatings = FPLModel.displayRatings(projection, {
         valueAboveReplacement,
-        seasonMinutes: num(player.minutes)
+        seasonMinutes: num(player.minutes),
+        projectionPopulation: viableProjectionPopulation
     });
 
     return {
