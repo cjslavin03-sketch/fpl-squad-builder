@@ -225,6 +225,13 @@ function safeProviderMessage(value) { return value ? String(value).replace(/[\u0
     .replace(/((?:bearer|authorization))\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
     .replace(/((?:api[-_ ]?key|token))\s*[:=]\s*[^\s,;]+/gi, "$1: [redacted]")
     .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]").replace(/\s+/g, " ").trim().slice(0, 160) : "unavailable"; }
+function safeFingerprint(value) { return /^[a-f0-9]{8}$/.test(value || "") ? value : "unavailable"; }
+function safeQuotaHeaders(value) {
+    const allowed = ["x-ratelimit-requests-limit", "x-ratelimit-requests-remaining", "x-ratelimit-limit",
+        "x-ratelimit-remaining", "retry-after"];
+    return allowed.filter(name => value && Object.hasOwn(value, name)).map(name =>
+        `  - ${name}: ${String(value[name]).replace(/[^\x20-\x7e]/g, "").slice(0, 80)}`);
+}
 
 function debugBlock(diagnostics, answerMode, failures) {
     const lines = ["--- DEBUG ---"];
@@ -268,7 +275,14 @@ function debugBlock(diagnostics, answerMode, failures) {
             `- total calls attempted: ${item.providerMetrics?.callsAttempted || 0}`,
             `- calls served from cache: ${item.providerMetrics?.callsFromCache || 0}`,
             `- calls coalesced: ${item.providerMetrics?.callsCoalesced || 0}`,
-            `- calls rate-limited: ${item.providerMetrics?.callsRateLimited || 0}`);
+            `- calls rate-limited: ${item.providerMetrics?.callsRateLimited || 0}`,
+            "API-Football quota diagnostics:",
+            `- configured key fingerprint: ${safeFingerprint(item.providerDiagnostics?.configuredKeyFingerprint)}`,
+            `- cross-call fingerprint consistent: ${yesNo(item.providerDiagnostics?.crossCallFingerprintConsistent)}`);
+        (item.providerDiagnostics?.calls || []).forEach((call, callIndex) => {
+            lines.push(`- call ${callIndex + 1} key fingerprint: ${safeFingerprint(call.apiKeyFingerprint)}`,
+                ...safeQuotaHeaders(call.responseHeaders));
+        });
     });
     const safeFailures = [...new Set((failures || []).map(safeFailure).filter(value => value !== "none"))];
     lines.push("Answer mode:", `- ${answerMode === "llm" ? "LLM" : "fallback"}`,
@@ -329,7 +343,8 @@ async function handleChat(request, env) {
         historicalPartial: context.knowledge.historical?.partial || false,
         currentItems: context.knowledge.recent?.items?.length || 0, currentAsOf: context.knowledge.recent?.asOf || null,
         currentStale: context.knowledge.recent?.stale ?? null, cache: context.knowledge.cache,
-        providerAttempts: context.knowledge.attempts, providerMetrics };
+        providerAttempts: context.knowledge.attempts, providerMetrics,
+        providerDiagnostics: context.knowledge.providerDiagnostics };
     });
     if (env?.BALL_KNOWLEDGE_LOGGING === "true") console.info("ball-knowledge", JSON.stringify({
         players: diagnostics.map(item => ({ playerId: item.playerId, providerPlayerId: item.providerPlayerId,
