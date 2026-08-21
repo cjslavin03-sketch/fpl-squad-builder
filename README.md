@@ -58,7 +58,9 @@ Worker secrets/variables:
 | `FOOTBALL_DATA_API_KEY` | API-Football key from the provider dashboard; required by the built-in provider and stored only as a Worker secret. `API_FOOTBALL_KEY` is accepted as an alias. |
 | `API_FOOTBALL_BASE_URL` | Optional API-Football-compatible base URL, primarily for testing. |
 | `FOOTBALL_CURRENT_SEASON` | Optional season-start year override; normally inferred in UTC. |
-| `FOOTBALL_HISTORY_SEASONS` | Number of career seasons to request, default 6 and maximum 8. Reducing it conserves quota. |
+| `FOOTBALL_HISTORY_SEASONS` | Free-tier ceiling for automatic recent history, default 3; normal intent requests 1–2 seasons. |
+| `FOOTBALL_API_MIN_INTERVAL_MS` | Minimum spacing for serialized API-Football calls, default 1000 ms. |
+| `FOOTBALL_API_RATE_LIMIT_COOLDOWN_MS` | Cooldown after a provider rate limit, default 90000 ms. |
 | `FOOTBALL_CONTEXT_API_KEY` | Optional NewsAPI key for recent reputable reporting. Keep it server-side. |
 | `FOOTBALL_NEWS_DOMAINS` | Optional comma-separated NewsAPI domain allowlist for trusted club/league/journalism sources. |
 | `FOOTBALL_DATA_URL` | Optional custom adapter override (`/history?name=...`); takes precedence over the built-in provider. |
@@ -70,12 +72,10 @@ Worker secrets/variables:
 | `BALL_KNOWLEDGE_LOGGING` | Set to `true` for concise provider/cache/latency diagnostics; questions and credentials are never logged. |
 
 API-Football and NewsAPI both publish plan details on their websites; limits and production-use
-terms change, so verify the current plan before deployment. Historical retrieval uses one player
-search, one season-list request, then one request per configured season. Recent retrieval uses a
-player search plus transfer and injury requests, and optionally one NewsAPI request. Cache TTLs
-therefore matter on quota-limited plans. The application does not scrape or blindly inject search
-pages. Every external source carries a category and the evidence it supports; reporting also has
-a publisher, article URL, and publication date.
+terms change, so verify the current plan before deployment. Retrieval is intent-aware, serialized,
+individually cached, and described in the free-tier section below. The application does not scrape
+or blindly inject search pages. Every external source carries a category and the evidence it
+supports; reporting also has a publisher, article URL, and publication date.
 
 With no external configuration the chat still resolves players and gives a grounded Model View,
 explicitly labels historical/current facts unavailable, and never invents them. Historical or
@@ -122,13 +122,21 @@ loads the target's live FPL payload, exercises Tzolis, Haaland, Bruno, a defende
 budget midfielder, and reports resolved identity, Model View, evidence presence, source count,
 Scout confidence, cache status, answer mode, and failure categories.
 
-An uncached history query costs one identity search, one season-list call, and one call per season
-(8 API-Football calls at the six-season default). An uncached recent query costs one identity
-search plus transfers and injuries (3 calls); a combined request reuses the identity in the Worker
-isolate. News enrichment adds one NewsAPI call. Model-only questions cost zero research calls.
-History then caches for 30 days, current context for 30 minutes, and resolved provider identity for
-30 minutes. These caches are isolate-local; smoke output exposes hit/miss status so deployed
-behavior can be checked without logging conversations.
+Free-tier defaults avoid the previous cold-query fan-out of one identity search, one season-list
+call, six concurrent season calls, transfers, and injuries (up to 11 API-Football calls). Normal
+history now directly fetches the two most recent completed seasons: one identity plus two sequential
+season calls (3 calls cold), with no season-list request. “Last season” costs 2 calls, while an
+explicit full-career request progressively uses the cached season list and up to six seasons.
+Model-only questions cost zero research calls. Transfers and injuries are independently requested
+only when their sub-intent requires them; role/underrating questions can use trusted news without
+spending API-Football current-context quota.
+
+API-Football requests are serialized and spaced by `FOOTBALL_API_MIN_INTERVAL_MS` (1000 ms by
+default), with identical in-flight requests coalesced. Identity caches for 7 days; each player-season
+and available-season list for 30 days; transfers for 6 hours; injuries for 45 minutes. A rate-limit
+response starts a 90-second isolate-local cooldown and is never permanently cached. Successful
+season rows survive a later rate limit as a partial, Low-confidence profile. Smoke/debug output
+exposes attempted, cached, coalesced, and rate-limited call counts without URLs or credentials.
 
 ### Manual evaluation checklist
 

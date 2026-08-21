@@ -16,9 +16,25 @@ assert.equal(resolvePlayers("Why is he low?", players, [1]).players[0].id, 1, "p
 assert.equal(resolvePlayers("Smith", players).status, "ambiguous");
 assert.equal(resolvePlayers("Nobody Here", players).status, "not_found");
 assert.deepEqual(resolvePlayers("Tzolis or Haaland", players).players.map(p => p.id), [1, 2]);
-assert.equal(detectIntent("What is Haaland's Overall?").historical, false);
-assert.equal(detectIntent("Walk through his career and recent transfer").recent, true);
-assert.equal(detectIntent("Tell me about Tzolis and why the builder might underrate him").recent, true);
+const intentCases = [
+    ["Tell me about Tzolis and why the builder might underrate him.", true, true],
+    ["Tell me about Tzolis.", true, false],
+    ["Is Tzolis starting for Arsenal?", false, true],
+    ["Why is Tzolis rated so low?", true, true],
+    ["What's Haaland's Overall?", false, false],
+    ["What is Bruno's price?", false, false],
+    ["Give me Tzolis' career history.", true, false],
+    ["Is Tzolis injured?", false, true]
+];
+intentCases.forEach(([question, historicalIntent, recentIntent]) => {
+    const intent = detectIntent(question);
+    assert.deepEqual({ model: intent.model, historical: intent.historical, recent: intent.recent },
+        { model: true, historical: historicalIntent, recent: recentIntent }, question);
+});
+assert.equal(detectIntent("What did Tzolis do last season?").historyDepth, 1);
+assert.equal(detectIntent("Give me Tzolis' full career history.").historyDepth, 6);
+assert.deepEqual(detectIntent("Is Tzolis injured?").currentContext,
+    { transfers: false, injuries: true, news: false });
 
 const historical = normalizeHistorical({ seasons: [{ season: "2025-26", club: "Example",
     minutes: "1800", appearances: "25", goals: "12", assists: "8", xG: "9.1" }],
@@ -39,6 +55,13 @@ assert.ok(scout.rating > model.overall);
 assert.equal(scout.disagreement, "positive");
 assert.deepEqual(model, before, "Scout Rating never mutates model values");
 assert.equal(scoutAssessment(model, null, null).rating, null);
+const partialHistory = normalizeHistorical({ identity: { confidence: "High" }, partial: true,
+    seasons: [{ season: "2025", club: "A", competition: "League", minutes: 900, goals: 5 }] });
+assert.equal(scoutAssessment(model, partialHistory, null).confidence, "Low");
+const partialAnswer = await answerWithProvider("career", [{ player: { name: "Tzolis", position: "MID", club: "Arsenal" },
+    model, scout: scoutAssessment(model, partialHistory, null),
+    knowledge: { historical: partialHistory, recent: null, failures: ["historical-history:rate_limit"] } }], {});
+assert.match(partialAnswer, /Recent historical data is available/);
 assert.match(buildPrompt("Question", [{ model }]), /Never invent statistics/);
 assert.match(buildPrompt("Question", [{ model }]), /Separate Model View/);
 
@@ -58,7 +81,16 @@ try {
         { FOOTBALL_DATA_URL: "https://data.test", FOOTBALL_CONTEXT_URL: "https://news.test" }, Date.parse("2026-01-01"));
     assert.equal(knowledge.historical.seasons.length, 1);
     assert.equal(knowledge.recent.stale, true, "old news is explicitly stale");
+    assert.equal(knowledge.attempts.historical.state, "success");
+    assert.equal(knowledge.attempts.recent.state, "success");
 } finally { globalThis.fetch = originalFetch; }
+
+clearKnowledgeCache();
+const unconfigured = await retrieveKnowledge(players[0], { model: true, historical: true, recent: true }, {});
+assert.deepEqual(unconfigured.cache, { historical: "not_configured", recent: "not_configured" });
+assert.equal(unconfigured.attempts.historical.providerSelectionAttempted, true);
+assert.equal(unconfigured.attempts.historical.providerConfigured, false);
+assert.equal(unconfigured.attempts.recent.state, "provider_not_configured");
 
 globalThis.fetch = async () => { throw new Error("offline"); };
 try {
@@ -66,6 +98,7 @@ try {
     const degraded = await retrieveKnowledge(players[0], { historical: true, recent: true },
         { FOOTBALL_DATA_URL: "x", FOOTBALL_CONTEXT_URL: "x" });
     assert.deepEqual(degraded.failures, ["historical:upstream", "recent:upstream"]);
+    assert.equal(degraded.attempts.historical.failureCategory, "upstream");
 } finally { globalThis.fetch = originalFetch; }
 
 globalThis.fetch = async () => new Response("provider down", { status: 503 });
