@@ -1,7 +1,7 @@
 const HISTORICAL_TTL = 30 * 24 * 60 * 60;
 const RECENT_TTL = 30 * 60;
 const cache = new Map();
-import { clearProviderCache, fetchHistorical, fetchRecent, providerSelection } from "./football-providers.mjs";
+import { apiFootballKeyFingerprint, clearProviderCache, fetchHistorical, fetchRecent, providerSelection } from "./football-providers.mjs";
 
 export function foldName(value = "") {
     return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
@@ -160,13 +160,16 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
     const failures = [];
     let historical = null, recent = null;
     const cacheStatus = { historical: "skipped", recent: "skipped" };
+    const configuredKeyFingerprint = await apiFootballKeyFingerprint(env.FOOTBALL_DATA_API_KEY || env.API_FOOTBALL_KEY);
     const attempts = {
         historical: { requested: Boolean(intent.historical), providerSelectionAttempted: false,
             provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
-            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null },
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null,
+            providerDiagnostics: null },
         recent: { requested: Boolean(intent.recent), providerSelectionAttempted: false,
             provider: null, providerConfigured: null, identityLookupAttempted: false, identityLookupRequestCompleted: false,
-            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null }
+            state: "skipped_by_intent", failureCategory: null, providerErrorKeys: [], providerMessage: null, providerMetrics: null,
+            providerDiagnostics: null }
     };
     if (intent.historical) try {
         const selection = providerSelection(env, "historical");
@@ -196,7 +199,8 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
             (attempts.historical.identityLookupAttempted && error.stage !== "identity_lookup");
         attempts.historical.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
         attempts.historical.providerMessage = error.providerMessage || null;
-        attempts.historical.providerMetrics = error.providerMetrics || null; }
+        attempts.historical.providerMetrics = error.providerMetrics || null;
+        attempts.historical.providerDiagnostics = error.providerDiagnostics || null; }
     if (intent.recent) try {
         const selection = providerSelection(env, "recent");
         const current = intent.currentContext || {};
@@ -230,8 +234,16 @@ export async function retrieveKnowledge(player, intent, env, now = Date.now()) {
             (attempts.recent.identityLookupAttempted && error.stage !== "identity_lookup");
         attempts.recent.providerErrorKeys = Array.isArray(error.providerErrorKeys) ? error.providerErrorKeys : [];
         attempts.recent.providerMessage = error.providerMessage || null;
-        attempts.recent.providerMetrics = error.providerMetrics || null; }
-    return { historical, recent, failures, cache: cacheStatus, attempts };
+        attempts.recent.providerMetrics = error.providerMetrics || null;
+        attempts.recent.providerDiagnostics = error.providerDiagnostics || null; }
+    const callDiagnostics = [historical?.metrics, recent?.metrics, attempts.historical.providerMetrics,
+        attempts.recent.providerMetrics].flatMap(metrics => metrics?.providerDiagnostics || []);
+    const fingerprints = [configuredKeyFingerprint,
+        ...callDiagnostics.map(item => item.apiKeyFingerprint)].filter(Boolean);
+    return { historical, recent, failures, cache: cacheStatus, attempts, providerDiagnostics: {
+        configuredKeyFingerprint, calls: callDiagnostics,
+        crossCallFingerprintConsistent: fingerprints.length < 2 || fingerprints.every(value => value === fingerprints[0])
+    } };
 }
 
 export function buildEvidence(context) {

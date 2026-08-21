@@ -12,6 +12,8 @@ const availableSeasonsCache = new Map();
 const transferCache = new Map();
 const injuryCache = new Map();
 const apiInflight = new Map();
+const API_FOOTBALL_DIAGNOSTIC_HEADERS = ["x-ratelimit-requests-limit", "x-ratelimit-requests-remaining",
+    "x-ratelimit-limit", "x-ratelimit-remaining", "retry-after"];
 let apiQueue = Promise.resolve(), lastApiCallAt = 0, rateLimitUntil = 0;
 const TRUSTED_NEWS_DOMAINS = ["premierleague.com", "uefa.com", "bbc.co.uk", "skysports.com",
     "theathletic.com", "reuters.com", "arsenal.com", "mancity.com", "manutd.com", "liverpoolfc.com"];
@@ -24,6 +26,7 @@ export class ProviderError extends Error {
         this.stage = metadata.stage || null;
         this.identityLookupCompleted = metadata.identityLookupCompleted;
         this.providerMetrics = metadata.providerMetrics || null;
+        this.providerDiagnostics = metadata.providerDiagnostics || null;
     }
 }
 
@@ -82,26 +85,48 @@ export function providerSelection(env = {}, kind = "historical") {
     throw new ProviderError("configuration", 400, `Unsupported ${kind} provider: ${name}`);
 }
 
-async function checkedJson(url, headers, provider) {
+function quotaHeaders(headers) {
+    return Object.fromEntries(API_FOOTBALL_DIAGNOSTIC_HEADERS.flatMap(name => {
+        const value = headers?.get?.(name);
+        return value === null || value === undefined ? [] : [[name, String(value)]];
+    }));
+}
+
+export async function apiFootballKeyFingerprint(value) {
+    if (!value) return null;
+    const bytes = new TextEncoder().encode(String(value));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest).slice(0, 4)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function checkedJson(url, headers, provider, diagnosticContext = null) {
     const response = await fetch(url, { headers: { Accept: "application/json", ...headers } });
+    const providerDiagnostics = diagnosticContext ? {
+        apiKeyFingerprint: diagnosticContext.apiKeyFingerprint,
+        responseHeaders: quotaHeaders(response.headers)
+    } : null;
     if (!response.ok) {
         const kind = response.status === 401 || response.status === 403 ? "auth" :
             response.status === 429 ? "rate_limit" : "upstream";
-        throw new ProviderError(kind, response.status, `${provider} returned HTTP ${response.status}`);
+        throw new ProviderError(kind, response.status, `${provider} returned HTTP ${response.status}`, { providerDiagnostics });
     }
     let body;
-    try { body = await response.json(); } catch { throw new ProviderError("malformed", 502, `${provider} returned invalid JSON`); }
-    if (!body || typeof body !== "object") throw new ProviderError("malformed", 502, `${provider} returned an invalid payload`);
+    try { body = await response.json(); } catch { throw new ProviderError("malformed", 502,
+        `${provider} returned invalid JSON`, { providerDiagnostics }); }
+    if (!body || typeof body !== "object") throw new ProviderError("malformed", 502,
+        `${provider} returned an invalid payload`, { providerDiagnostics });
     if (body.errors && (Array.isArray(body.errors) ? body.errors.length : Object.keys(body.errors).length)) {
         const classified = providerBodyError(body.errors, Object.values(headers));
         throw new ProviderError(classified.kind, 502, `${provider} rejected the request`, {
-            providerErrorKeys: classified.keys, providerMessage: classified.message
+            providerErrorKeys: classified.keys, providerMessage: classified.message, providerDiagnostics
         });
     }
+    if (providerDiagnostics) diagnosticContext.metrics.providerDiagnostics.push(providerDiagnostics);
     return body;
 }
 
-function newMetrics() { return { callsAttempted: 0, callsFromCache: 0, callsCoalesced: 0, callsRateLimited: 0 }; }
+function newMetrics() { return { callsAttempted: 0, callsFromCache: 0, callsCoalesced: 0, callsRateLimited: 0,
+    providerDiagnostics: [] }; }
 function sleep(milliseconds) { return milliseconds > 0 ? new Promise(resolve => setTimeout(resolve, milliseconds)) : Promise.resolve(); }
 function apiFootball(env, path, params = {}, metrics = newMetrics()) {
     const key = env.FOOTBALL_DATA_API_KEY || env.API_FOOTBALL_KEY;
@@ -121,13 +146,15 @@ function apiFootball(env, path, params = {}, metrics = newMetrics()) {
         const interval = Math.max(0, Number(env.FOOTBALL_API_MIN_INTERVAL_MS ?? 1000) || 0);
         await sleep(Math.max(0, interval - (Date.now() - lastApiCallAt)));
         lastApiCallAt = Date.now(); metrics.callsAttempted += 1;
-        try { return await checkedJson(url, { "x-apisports-key": key }, "API-Football"); }
+        const apiKeyFingerprint = await apiFootballKeyFingerprint(key);
+        try { return await checkedJson(url, { "x-apisports-key": key }, "API-Football", { apiKeyFingerprint, metrics }); }
         catch (error) {
             if (error.kind === "rate_limit") {
                 metrics.callsRateLimited += 1;
                 rateLimitUntil = Date.now() + Math.max(1000, Number(env.FOOTBALL_API_RATE_LIMIT_COOLDOWN_MS) || 90000);
             }
             error.providerMetrics = metrics;
+            if (error.providerDiagnostics) metrics.providerDiagnostics.push(error.providerDiagnostics);
             throw error;
         }
     });
