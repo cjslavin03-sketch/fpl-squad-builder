@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { apiFootballHistory, apiFootballRecent, detectConflicts, fetchHistorical, fetchRecent,
     matchProviderIdentity, newsApiContext, newsRelevance, ProviderError, providerSelection,
-    seasonStartYear } from "./football-providers.mjs";
+    sanitizeProviderMessage, seasonStartYear } from "./football-providers.mjs";
 import { buildEvidence, clearKnowledgeCache, normalizeHistorical, retrieveKnowledge } from "./ball-knowledge.mjs";
 
 const tzolis = { id: 1, code: 101, first_name: "Christos", second_name: "Tzolis",
     club: "Arsenal", nationality: "Greece", position: "MID", date_of_birth: "2002-01-30" };
 const env = { FOOTBALL_DATA_PROVIDER: "api-football", FOOTBALL_CONTEXT_PROVIDER: "api-football",
-    FOOTBALL_DATA_API_KEY: "server-secret", FOOTBALL_CURRENT_SEASON: "2026", FOOTBALL_HISTORY_SEASONS: "2" };
+    FOOTBALL_DATA_API_KEY: "server-secret", FOOTBALL_CURRENT_SEASON: "2026", FOOTBALL_HISTORY_SEASONS: "2",
+    FOOTBALL_API_MIN_INTERVAL_MS: "0", FOOTBALL_API_RATE_LIMIT_COOLDOWN_MS: "1000" };
 const now = Date.parse("2026-08-20T00:00:00Z");
 
 assert.deepEqual(providerSelection({}, "historical"), { name: "api-football", configured: false });
@@ -25,6 +26,8 @@ const common = matchProviderIdentity([
     { player: { id: 2, name: "Alex Smith" }, statistics: [] }
 ], { first_name: "Alex", second_name: "Smith" });
 assert.equal(common.status, "ambiguous", "common names are never silently attached");
+assert.doesNotMatch(sanitizeProviderMessage("Invalid API key SUPER_SECRET_PROVIDER_TOKEN", ["SUPER_SECRET_PROVIDER_TOKEN"]),
+    /SUPER_SECRET_PROVIDER_TOKEN/);
 
 const originalFetch = globalThis.fetch;
 let calls = [];
@@ -116,9 +119,26 @@ try {
 } finally { globalThis.fetch = originalFetch; }
 
 for (const [status, kind] of [[401, "auth"], [429, "rate_limit"]]) {
+    clearKnowledgeCache();
     globalThis.fetch = async () => new Response("", { status });
     try { await assert.rejects(() => fetchHistorical(tzolis, env), error => error instanceof ProviderError && error.kind === kind); }
     finally { globalThis.fetch = originalFetch; }
+}
+
+for (const [errors, kind, key] of [
+    [{ token: "Invalid API key" }, "auth", "token"],
+    [{ requests: "Request limit reached" }, "rate_limit", "requests"],
+    [{ season: "The season is not available" }, "season", "season"],
+    [{ plan: "This endpoint is not available on your plan" }, "plan", "plan"],
+    [{ search: "The player search parameter is invalid" }, "request", "search"],
+    [{ mystery: "Provider had an unknown problem" }, "upstream", "mystery"]
+]) {
+    clearKnowledgeCache(); globalThis.fetch = async () => Response.json({ errors });
+    try {
+        await assert.rejects(() => apiFootballHistory(tzolis, env), error => error instanceof ProviderError &&
+            error.kind === kind && error.providerErrorKeys.includes(key) && error.providerMessage.length <= 160 &&
+            error.stage === "identity_lookup" && error.identityLookupCompleted === false);
+    } finally { globalThis.fetch = originalFetch; }
 }
 
 globalThis.fetch = async () => Response.json({ unexpected: [] });
@@ -129,8 +149,10 @@ let modelOnlyCalls = 0; globalThis.fetch = async () => { modelOnlyCalls += 1; th
 try {
     clearKnowledgeCache();
     const modelOnly = await retrieveKnowledge(tzolis, { historical: false, recent: false }, env);
-    assert.equal(modelOnlyCalls, 0); assert.deepEqual(modelOnly, { historical: null, recent: null, failures: [],
-        cache: { historical: "skipped", recent: "skipped" } });
+    assert.equal(modelOnlyCalls, 0); assert.equal(modelOnly.historical, null); assert.equal(modelOnly.recent, null);
+    assert.deepEqual(modelOnly.cache, { historical: "skipped", recent: "skipped" });
+    assert.equal(modelOnly.attempts.historical.state, "skipped_by_intent");
+    assert.equal(modelOnly.attempts.recent.providerSelectionAttempted, false);
 } finally { globalThis.fetch = originalFetch; }
 
 console.log("football provider tests passed");

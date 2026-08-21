@@ -1,5 +1,5 @@
 name = "jolly-glitter-bb07"
-main = "worker-debug.mjs"
+main = "worker.mjs"
 compatibility_date = "2026-08-19"
 
 [vars]

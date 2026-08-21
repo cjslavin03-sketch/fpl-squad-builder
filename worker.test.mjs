@@ -89,12 +89,14 @@ const chatResponse = await handleRequest(new Request("https://worker.test/api/ba
         question: "What is Haaland's Overall?", players: current, teams: [{ id: 1, name: "City" }],
         modelById: { 101: { price: 14, overall: 91, value: 70, projectedPoints: 7.2, expectedMinutes: 84 } }
     })
-}));
+}), { BALL_KNOWLEDGE_LOGGING: "true", FOOTBALL_DATA_API_KEY: "MODEL_ONLY_SECRET" });
 assert.equal(chatResponse.status, 200);
 const chat = await chatResponse.json();
 assert.match(chat.answer, /Overall: 91/);
 assert.match(chat.answer, /projected points: 7.2/);
 assert.equal(chat.players[0].scout.rating, null, "no fabricated Scout Rating without history");
+assert.match(chat.answer, /--- DEBUG ---/); assert.match(chat.answer, /status: skipped_by_intent/);
+assert.doesNotMatch(chat.answer, /MODEL_ONLY_SECRET|authorization/i);
 
 const missingResponse = await handleRequest(new Request("https://worker.test/api/ball-knowledge", {
     method: "POST", headers: { "content-type": "application/json" },
@@ -123,7 +125,9 @@ try {
             question: "Tell me about Tzolis career history", players: [researchPlayer],
             teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { price: 6.5, overall: 64,
                 value: 58, projectedPoints: 3.4, expectedMinutes: 61 } } }) }),
-        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test" });
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
     assert.equal(deep.status, 200); const deepBody = await deep.json();
     assert.match(deepBody.answer, /Club Brugge, First Division A/); assert.equal(deepBody.sources[0].category, "career");
     assert.equal(deepBody.diagnostics[0].cache.historical, "miss"); assert.equal(deepBody.answerMode, "fallback");
@@ -140,9 +144,50 @@ try {
     const currentRole = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "What is Tzolis current role?",
             players: [researchPlayer], teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
-        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test" });
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
     assert.equal(currentRole.status, 200); const roleBody = await currentRole.json();
     assert.match(roleBody.answer, /Club Brugge to Arsenal/); assert.equal(roleBody.sources[0].category, "transfer");
+
+    clearKnowledgeCache(); researchCalls = [];
+    const productionQuery = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis and why the builder might underrate him.", players: [researchPlayer],
+            teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
+        { FOOTBALL_DATA_URL: "https://adapter.test", FOOTBALL_CONTEXT_URL: "https://context.test",
+            FOOTBALL_DATA_API_KEY: "HISTORICAL_SECRET", FOOTBALL_CONTEXT_API_KEY: "RECENT_SECRET",
+            LLM_API_KEY: "LLM_SECRET", BALL_KNOWLEDGE_LOGGING: "true" });
+    const productionBody = await productionQuery.json();
+    assert.deepEqual({ model: productionBody.diagnostics[0].intent.model,
+        historical: productionBody.diagnostics[0].intent.historical,
+        recent: productionBody.diagnostics[0].intent.recent }, { model: true, historical: true, recent: true });
+    assert.equal(productionBody.diagnostics[0].providerAttempts.historical.state, "success");
+    assert.equal(productionBody.diagnostics[0].providerAttempts.recent.state, "success");
+    assert.match(productionBody.answer, /--- DEBUG ---/);
+    assert.match(productionBody.answer, /historical: yes/); assert.match(productionBody.answer, /recent: yes/);
+    assert.match(productionBody.answer, /provider selection attempted: yes/);
+    assert.match(productionBody.answer, /API-Football request metrics:/);
+    assert.match(productionBody.answer, /history depth requested: 2/);
+    assert.match(productionBody.answer, /partial result: no/);
+    assert.doesNotMatch(productionBody.answer, /HISTORICAL_SECRET|RECENT_SECRET|LLM_SECRET|authorization/i);
+    assert.equal(researchCalls.filter(url => url.includes("/history")).length, 1);
+    assert.equal(researchCalls.filter(url => url.includes("/recent")).length, 1);
+
+    clearKnowledgeCache();
+    globalThis.fetch = async () => Response.json({ errors: { token: "Invalid API key LIVE_PROVIDER_SECRET_123456789" } });
+    const rejectedProvider = await handleRequest(new Request("https://worker.test/api/ball-knowledge", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({
+            question: "Tell me about Tzolis and why the builder might underrate him.", players: [researchPlayer],
+            teams: [{ id: 1, name: "Arsenal" }], modelById: { 501: { overall: 64 } } }) }),
+        { FOOTBALL_DATA_API_KEY: "LIVE_PROVIDER_SECRET_123456789", BALL_KNOWLEDGE_LOGGING: "true" });
+    const rejectedBody = await rejectedProvider.json();
+    assert.match(rejectedBody.answer, /failure category: auth/);
+    assert.match(rejectedBody.answer, /provider error keys: token/);
+    assert.match(rejectedBody.answer, /provider message: Invalid API key \[redacted\]/);
+    assert.match(rejectedBody.answer, /identity lookup request completed: no/);
+    assert.match(rejectedBody.answer, /cache: miss/);
+    assert.doesNotMatch(rejectedBody.answer, /LIVE_PROVIDER_SECRET_123456789|authorization/i);
 } finally { globalThis.fetch = originalFetch; }
 
 console.log(`worker tests passed: ${priors.length} matched, ${current.length - priors.length} fallback`);

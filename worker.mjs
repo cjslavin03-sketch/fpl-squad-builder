@@ -204,6 +204,79 @@ function cleanModel(model = {}) {
         fixture: String(model.fixture || "unavailable").slice(0, 200) };
 }
 
+const SAFE_FAILURES = new Set(["none", "configuration", "identity_not_found", "identity_ambiguous",
+    "auth", "rate_limit", "season", "request", "plan", "malformed", "upstream",
+    "partial_provider_failure", "language_provider"]);
+function safeFailure(value) {
+    const category = String(value || "none").split(":").at(-1);
+    return SAFE_FAILURES.has(category) ? category : "upstream";
+}
+function yesNo(value) { return value === null || value === undefined ? "unknown" : value ? "yes" : "no"; }
+function safeProvider(value) { return ["api-football", "custom", "none"].includes(value) ? value : "unavailable"; }
+function safeState(value) {
+    return ["success", "empty", "failed", "skipped_by_intent", "provider_not_configured", "provider_attempted"]
+        .includes(value) ? value : "unavailable";
+}
+function safeId(value) { return value === null || value === undefined ? "unavailable" :
+    String(value).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "unavailable"; }
+function safeErrorKeys(values) { return (Array.isArray(values) ? values : []).map(value =>
+    String(value).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40)).filter(Boolean).slice(0, 8); }
+function safeProviderMessage(value) { return value ? String(value).replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/((?:bearer|authorization))\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+    .replace(/((?:api[-_ ]?key|token))\s*[:=]\s*[^\s,;]+/gi, "$1: [redacted]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]").replace(/\s+/g, " ").trim().slice(0, 160) : "unavailable"; }
+
+function debugBlock(diagnostics, answerMode, failures) {
+    const lines = ["--- DEBUG ---"];
+    diagnostics.forEach((item, index) => {
+        const historical = item.providerAttempts?.historical || {};
+        const recent = item.providerAttempts?.recent || {};
+        lines.push(`Player ${index + 1}: ${safeId(item.playerId)}`,
+            "Detected intent:", `- model: ${yesNo(item.intent?.model)}`,
+            `- historical: ${yesNo(item.intent?.historical)}`, `- recent: ${yesNo(item.intent?.recent)}`,
+            "Historical retrieval:", `- requested: ${yesNo(historical.requested)}`,
+            `- cache: ${["hit", "miss", "skipped", "not_configured"].includes(item.cache?.historical) ? item.cache.historical : "unknown"}`,
+            `- provider selection attempted: ${yesNo(historical.providerSelectionAttempted)}`,
+            `- provider: ${safeProvider(historical.provider)}`, `- provider configured: ${yesNo(historical.providerConfigured)}`,
+            `- identity lookup attempted: ${yesNo(historical.identityLookupAttempted)}`,
+            `- identity lookup request completed: ${yesNo(historical.identityLookupRequestCompleted)}`,
+            `- identity matched: ${yesNo(item.historicalIdentityMatched)}`,
+            `- provider player ID: ${safeId(item.historicalProviderPlayerId)}`,
+            `- identity confidence: ${["High", "Medium", "Low", "Unavailable"].includes(item.identityConfidence) ? item.identityConfidence : "Unavailable"}`,
+            `- historical rows returned: ${Number.isInteger(item.historicalRows) ? item.historicalRows : 0}`,
+            `- history depth requested: ${Number.isInteger(item.historyDepthRequested) ? item.historyDepthRequested : 0}`,
+            `- history seasons successfully returned: ${Array.isArray(item.historySeasonsReturned) ? item.historySeasonsReturned.join(", ") || "none" : "none"}`,
+            `- partial result: ${yesNo(item.historicalPartial)}`,
+            `- status: ${safeState(historical.state)}`,
+            `- failure category: ${historical.failureCategory ? safeFailure(historical.failureCategory) : "none"}`,
+            `- provider error keys: ${safeErrorKeys(historical.providerErrorKeys).join(", ") || "none"}`,
+            `- provider message: ${safeProviderMessage(historical.providerMessage)}`,
+            "Recent retrieval:", `- requested: ${yesNo(recent.requested)}`,
+            `- cache: ${["hit", "miss", "skipped", "not_configured"].includes(item.cache?.recent) ? item.cache.recent : "unknown"}`,
+            `- provider selection attempted: ${yesNo(recent.providerSelectionAttempted)}`,
+            `- provider: ${safeProvider(recent.provider)}`, `- provider configured: ${yesNo(recent.providerConfigured)}`,
+            `- identity lookup attempted: ${yesNo(recent.identityLookupAttempted)}`,
+            `- identity lookup request completed: ${yesNo(recent.identityLookupRequestCompleted)}`,
+            `- identity matched: ${yesNo(item.recentIdentityMatched)}`,
+            `- provider player ID: ${safeId(item.recentProviderPlayerId)}`,
+            `- items returned: ${Number.isInteger(item.currentItems) ? item.currentItems : 0}`,
+            `- stale: ${yesNo(item.currentStale)}`, `- status: ${safeState(recent.state)}`,
+            `- failure category: ${recent.failureCategory ? safeFailure(recent.failureCategory) : "none"}`,
+            `- provider error keys: ${safeErrorKeys(recent.providerErrorKeys).join(", ") || "none"}`,
+            `- provider message: ${safeProviderMessage(recent.providerMessage)}`);
+        lines.push("API-Football request metrics:",
+            `- total calls attempted: ${item.providerMetrics?.callsAttempted || 0}`,
+            `- calls served from cache: ${item.providerMetrics?.callsFromCache || 0}`,
+            `- calls coalesced: ${item.providerMetrics?.callsCoalesced || 0}`,
+            `- calls rate-limited: ${item.providerMetrics?.callsRateLimited || 0}`);
+    });
+    const safeFailures = [...new Set((failures || []).map(safeFailure).filter(value => value !== "none"))];
+    lines.push("Answer mode:", `- ${answerMode === "llm" ? "LLM" : "fallback"}`,
+        `Total safe failure categories: ${safeFailures.length}${safeFailures.length ? ` (${safeFailures.join(", ")})` : ""}`,
+        "--- END DEBUG ---");
+    return lines.join("\n");
+}
+
 async function handleChat(request, env) {
     const startedAt = Date.now();
     let body;
@@ -234,19 +307,40 @@ async function handleChat(request, env) {
     const sources = dedupeSources(contexts.flatMap(context => [
         ...(context.knowledge.historical?.sources || []), ...(context.knowledge.recent?.sources || [])
     ]));
-    const diagnostics = contexts.map(context => ({ playerId: context.player.id,
-        providerPlayerId: context.knowledge.historical?.providerPlayerId || null,
+    const diagnostics = contexts.map(context => {
+        const metrics = [context.knowledge.historical?.metrics, context.knowledge.recent?.metrics,
+            context.knowledge.attempts?.historical?.providerMetrics,
+            context.knowledge.attempts?.recent?.providerMetrics].filter(Boolean);
+        const providerMetrics = metrics.reduce((total, item) => ({ callsAttempted: total.callsAttempted + (item.callsAttempted || 0),
+            callsFromCache: total.callsFromCache + (item.callsFromCache || 0),
+            callsCoalesced: total.callsCoalesced + (item.callsCoalesced || 0),
+            callsRateLimited: total.callsRateLimited + (item.callsRateLimited || 0) }),
+        { callsAttempted: 0, callsFromCache: 0, callsCoalesced: 0, callsRateLimited: 0 });
+        return { playerId: context.player.id, intent,
+        providerPlayerId: context.knowledge.historical?.providerPlayerId || context.knowledge.recent?.identity?.providerPlayerId || null,
+        historicalProviderPlayerId: context.knowledge.historical?.providerPlayerId || null,
+        recentProviderPlayerId: context.knowledge.recent?.identity?.providerPlayerId || null,
+        historicalIdentityMatched: context.knowledge.historical?.identity?.status === "matched",
+        recentIdentityMatched: Boolean(context.knowledge.recent?.identity?.providerPlayerId),
         identityConfidence: context.knowledge.historical?.identity?.confidence || context.knowledge.recent?.identity?.confidence || "Unavailable",
         historicalRows: context.knowledge.historical?.seasons?.length || 0,
+        historyDepthRequested: context.knowledge.historical?.historyDepthRequested || intent.historyDepth || 0,
+        historySeasonsReturned: context.knowledge.historical?.historySeasonsReturned || [],
+        historicalPartial: context.knowledge.historical?.partial || false,
         currentItems: context.knowledge.recent?.items?.length || 0, currentAsOf: context.knowledge.recent?.asOf || null,
-        currentStale: context.knowledge.recent?.stale ?? null, cache: context.knowledge.cache }));
+        currentStale: context.knowledge.recent?.stale ?? null, cache: context.knowledge.cache,
+        providerAttempts: context.knowledge.attempts, providerMetrics };
+    });
     if (env?.BALL_KNOWLEDGE_LOGGING === "true") console.info("ball-knowledge", JSON.stringify({
         players: diagnostics.map(item => ({ playerId: item.playerId, providerPlayerId: item.providerPlayerId,
-            identityConfidence: item.identityConfidence, cache: item.cache })), answerMode,
+            identityConfidence: item.identityConfidence, intent: item.intent, cache: item.cache,
+            providerAttempts: item.providerAttempts })), answerMode,
         failures: contexts.flatMap(c => c.knowledge.failures), latencyMs: Date.now() - startedAt }));
+    const safeFailures = contexts.flatMap(c => c.knowledge.failures);
+    if (env?.BALL_KNOWLEDGE_LOGGING === "true") answer += `\n\n${debugBlock(diagnostics, answerMode, safeFailures)}`;
     return jsonResponse({ answer, answerMode, players: contexts.map(context => ({ id: context.player.id,
         name: context.player.name, model: context.model, scout: context.scout })), diagnostics, sources,
-        failures: contexts.flatMap(c => c.knowledge.failures) }, 200, "no-store");
+        failures: safeFailures }, 200, "no-store");
 }
 
 async function handleRequest(request, env = {}) {
@@ -283,4 +377,4 @@ async function handleRequest(request, env = {}) {
 }
 
 export default { fetch: handleRequest };
-export { addAppearances, cleanModel, handleRequest, matchHistoricalPlayers, parseCsv, playerPayload, previousSeason, seasonFor };
+export { addAppearances, cleanModel, debugBlock, handleRequest, matchHistoricalPlayers, parseCsv, playerPayload, previousSeason, seasonFor };

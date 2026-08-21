@@ -1,1 +1,0 @@
-Reconcile Ball Knowledge from PR #9 with current main lock-player frontend.

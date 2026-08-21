@@ -1,13 +1,30 @@
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 const API_FOOTBALL_SOURCE = "https://www.api-football.com/documentation-v3";
 const NEWS_API_BASE = "https://newsapi.org/v2/everything";
-const IDENTITY_TTL = 30 * 60 * 1000;
+const IDENTITY_TTL = 7 * 24 * 60 * 60 * 1000;
+const SEASON_TTL = 30 * 24 * 60 * 60 * 1000;
+const TRANSFER_TTL = 6 * 60 * 60 * 1000;
+const INJURY_TTL = 45 * 60 * 1000;
 const identityCache = new Map();
+const identityInflight = new Map();
+const seasonCache = new Map();
+const availableSeasonsCache = new Map();
+const transferCache = new Map();
+const injuryCache = new Map();
+const apiInflight = new Map();
+let apiQueue = Promise.resolve(), lastApiCallAt = 0, rateLimitUntil = 0;
 const TRUSTED_NEWS_DOMAINS = ["premierleague.com", "uefa.com", "bbc.co.uk", "skysports.com",
     "theathletic.com", "reuters.com", "arsenal.com", "mancity.com", "manutd.com", "liverpoolfc.com"];
 
 export class ProviderError extends Error {
-    constructor(kind, status, message) { super(message); this.name = "ProviderError"; this.kind = kind; this.status = status; }
+    constructor(kind, status, message, metadata = {}) {
+        super(message); this.name = "ProviderError"; this.kind = kind; this.status = status;
+        this.providerErrorKeys = metadata.providerErrorKeys || [];
+        this.providerMessage = metadata.providerMessage || null;
+        this.stage = metadata.stage || null;
+        this.identityLookupCompleted = metadata.identityLookupCompleted;
+        this.providerMetrics = metadata.providerMetrics || null;
+    }
 }
 
 function text(value) { return value == null ? "" : String(value).trim(); }
@@ -17,13 +34,43 @@ function fold(value = "") { return text(value).normalize("NFKD").replace(/[\u030
     .toLowerCase().replace(/[^a-z0-9]/g, ""); }
 function dateValue(value) { const time = Date.parse(value || ""); return Number.isFinite(time) ? time : null; }
 
+export function sanitizeProviderMessage(value, secrets = []) {
+    let message = String(value ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ");
+    secrets.filter(secret => String(secret || "").length >= 4).forEach(secret => {
+        message = message.split(String(secret)).join("[redacted]");
+    });
+    return message.replace(/((?:bearer|authorization))\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+        .replace(/((?:api[-_ ]?key|token))\s*[:=]\s*[^\s,;]+/gi, "$1: [redacted]")
+        .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted]").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+function providerBodyError(errors, secrets = []) {
+    const entries = Array.isArray(errors) ? errors.map((value, index) => [String(index), value]) :
+        errors && typeof errors === "object" ? Object.entries(errors) : [["unknown", errors]];
+    const keys = entries.map(([key]) => String(key).toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40))
+        .filter(Boolean).slice(0, 8);
+    const message = sanitizeProviderMessage(entries.map(([, value]) => typeof value === "string" ? value :
+        JSON.stringify(value)).join("; "), secrets);
+    const signal = `${keys.join(" ")} ${message}`.toLowerCase();
+    const kind = /token|api.?key|authentic|unauthori/.test(signal) ? "auth" :
+        /request(s)?\b.*limit|rate.?limit|quota|too many/.test(signal) ? "rate_limit" :
+        /season/.test(signal) ? "season" :
+        /plan|subscription|permission|not available on your plan/.test(signal) ? "plan" :
+        /player|search|parameter|invalid request/.test(signal) ? "request" : "upstream";
+    return { kind, keys, message };
+}
+
 export function seasonStartYear(date = new Date()) {
     const value = date instanceof Date ? date : new Date(date);
     if (!Number.isFinite(value.getTime())) throw new TypeError("A valid date is required");
     return value.getUTCMonth() >= 6 ? value.getUTCFullYear() : value.getUTCFullYear() - 1;
 }
 
-export function clearProviderCache() { identityCache.clear(); }
+export function clearProviderCache() {
+    [identityCache, identityInflight, seasonCache, availableSeasonsCache, transferCache, injuryCache, apiInflight]
+        .forEach(store => store.clear());
+    apiQueue = Promise.resolve(); lastApiCallAt = 0; rateLimitUntil = 0;
+}
 
 export function providerSelection(env = {}, kind = "historical") {
     const override = kind === "historical" ? env.FOOTBALL_DATA_URL : env.FOOTBALL_CONTEXT_URL;
@@ -45,17 +92,55 @@ async function checkedJson(url, headers, provider) {
     let body;
     try { body = await response.json(); } catch { throw new ProviderError("malformed", 502, `${provider} returned invalid JSON`); }
     if (!body || typeof body !== "object") throw new ProviderError("malformed", 502, `${provider} returned an invalid payload`);
-    if (body.errors && (Array.isArray(body.errors) ? body.errors.length : Object.keys(body.errors).length))
-        throw new ProviderError("upstream", 502, `${provider}: ${JSON.stringify(body.errors).slice(0, 240)}`);
+    if (body.errors && (Array.isArray(body.errors) ? body.errors.length : Object.keys(body.errors).length)) {
+        const classified = providerBodyError(body.errors, Object.values(headers));
+        throw new ProviderError(classified.kind, 502, `${provider} rejected the request`, {
+            providerErrorKeys: classified.keys, providerMessage: classified.message
+        });
+    }
     return body;
 }
 
-function apiFootball(env, path, params = {}) {
+function newMetrics() { return { callsAttempted: 0, callsFromCache: 0, callsCoalesced: 0, callsRateLimited: 0 }; }
+function sleep(milliseconds) { return milliseconds > 0 ? new Promise(resolve => setTimeout(resolve, milliseconds)) : Promise.resolve(); }
+function apiFootball(env, path, params = {}, metrics = newMetrics()) {
     const key = env.FOOTBALL_DATA_API_KEY || env.API_FOOTBALL_KEY;
     if (!key) throw new ProviderError("configuration", 503, "API-Football key is not configured");
     const url = new URL(path, env.API_FOOTBALL_BASE_URL || API_FOOTBALL_BASE);
     Object.entries(params).forEach(([name, value]) => { if (value !== null && value !== undefined && value !== "") url.searchParams.set(name, value); });
-    return checkedJson(url, { "x-apisports-key": key }, "API-Football");
+    const requestKey = url.toString();
+    if (apiInflight.has(requestKey)) { metrics.callsCoalesced += 1; return apiInflight.get(requestKey); }
+    const operation = apiQueue.catch(() => {}).then(async () => {
+        if (Date.now() < rateLimitUntil) {
+            metrics.callsRateLimited += 1;
+            throw new ProviderError("rate_limit", 429, "API-Football rate-limit cooldown is active", {
+                providerErrorKeys: ["cooldown"], providerMessage: "Provider rate-limit cooldown is active",
+                providerMetrics: metrics
+            });
+        }
+        const interval = Math.max(0, Number(env.FOOTBALL_API_MIN_INTERVAL_MS ?? 1000) || 0);
+        await sleep(Math.max(0, interval - (Date.now() - lastApiCallAt)));
+        lastApiCallAt = Date.now(); metrics.callsAttempted += 1;
+        try { return await checkedJson(url, { "x-apisports-key": key }, "API-Football"); }
+        catch (error) {
+            if (error.kind === "rate_limit") {
+                metrics.callsRateLimited += 1;
+                rateLimitUntil = Date.now() + Math.max(1000, Number(env.FOOTBALL_API_RATE_LIMIT_COOLDOWN_MS) || 90000);
+            }
+            error.providerMetrics = metrics;
+            throw error;
+        }
+    });
+    apiQueue = operation.catch(() => {});
+    apiInflight.set(requestKey, operation);
+    operation.finally(() => apiInflight.delete(requestKey)).catch(() => {});
+    return operation;
+}
+
+async function providerCached(store, key, ttl, loader, metrics) {
+    const found = store.get(key);
+    if (found && Date.now() - found.time < ttl) { metrics.callsFromCache += 1; return found.value; }
+    const value = await loader(); store.set(key, { time: Date.now(), value }); return value;
 }
 
 export function scoreIdentity(candidate, player) {
@@ -111,38 +196,69 @@ function normalizedSeason(stat, season) {
     };
 }
 
-async function resolveApiFootballPlayer(player, env) {
+async function resolveApiFootballPlayer(player, env, metrics = newMetrics()) {
     const currentSeason = Number(env.FOOTBALL_CURRENT_SEASON) || seasonStartYear();
     const cacheKey = `${player.code || player.id || fold(`${player.first_name}${player.second_name}`)}:${currentSeason}`;
     const cached = identityCache.get(cacheKey);
-    if (cached && Date.now() - cached.time < IDENTITY_TTL) return cached.value;
-    const body = await apiFootball(env, "/players", { search: `${player.first_name} ${player.second_name}`.trim(), season: currentSeason });
+    if (cached && Date.now() - cached.time < IDENTITY_TTL) { metrics.callsFromCache += 1; return cached.value; }
+    if (identityInflight.has(cacheKey)) { metrics.callsCoalesced += 1; return identityInflight.get(cacheKey); }
+    const operation = (async () => {
+    let body;
+    try { body = await apiFootball(env, "/players", { search: `${player.first_name} ${player.second_name}`.trim(), season: currentSeason }, metrics); }
+    catch (error) {
+        if (error instanceof ProviderError) { error.stage = "identity_lookup"; error.identityLookupCompleted = false; }
+        throw error;
+    }
     if (!Array.isArray(body.response)) throw new ProviderError("malformed", 502, "API-Football players response is missing response[]");
     const match = matchProviderIdentity(body.response, player);
     if (match.status !== "matched") throw new ProviderError(match.status === "ambiguous" ? "identity_ambiguous" : "identity_not_found", 422,
-        match.status === "ambiguous" ? "Historical player identity is ambiguous" : "Historical player identity was not found");
+        match.status === "ambiguous" ? "Historical player identity is ambiguous" : "Historical player identity was not found",
+        { stage: "identity_match", identityLookupCompleted: true });
     const value = { ...match, currentSeason };
     identityCache.set(cacheKey, { time: Date.now(), value });
     return value;
+    })();
+    identityInflight.set(cacheKey, operation);
+    try { return await operation; } finally { identityInflight.delete(cacheKey); }
 }
 
-export async function apiFootballHistory(player, env) {
-    const identity = await resolveApiFootballPlayer(player, env);
+export async function apiFootballHistory(player, env, options = {}) {
+    const metrics = newMetrics();
+    const identity = await resolveApiFootballPlayer(player, env, metrics);
     const profile = identity.match.profile;
-    const seasonsBody = await apiFootball(env, "/players/seasons", { player: profile.id });
-    if (!Array.isArray(seasonsBody.response)) throw new ProviderError("malformed", 502, "API-Football seasons response is missing response[]");
-    const seasons = seasonsBody.response.map(Number).filter(Number.isFinite).sort((a, b) => b - a)
-        .slice(0, Math.max(1, Math.min(8, Number(env.FOOTBALL_HISTORY_SEASONS) || 6)));
-    const seasonBodies = await Promise.all(seasons.map(season => apiFootball(env, "/players", { id: profile.id, season })));
-    const rows = seasonBodies.flatMap((body, index) => {
-        if (!Array.isArray(body.response)) throw new ProviderError("malformed", 502, "API-Football season response is missing response[]");
-        return body.response.flatMap(record => (record.statistics || []).map(stat => normalizedSeason(stat, seasons[index])));
-    }).filter(row => row.club && row.competition);
+    const defaultDepth = Math.max(1, Math.min(3, Number(env.FOOTBALL_HISTORY_SEASONS) || 2));
+    const depth = Math.max(1, Math.min(options.fullCareer ? 8 : 3, Number(options.depth) || defaultDepth));
+    let seasons;
+    if (options.fullCareer) {
+        const seasonsBody = await providerCached(availableSeasonsCache, String(profile.id), SEASON_TTL,
+            () => apiFootball(env, "/players/seasons", { player: profile.id }, metrics), metrics);
+        if (!Array.isArray(seasonsBody.response)) throw new ProviderError("malformed", 502, "API-Football seasons response is missing response[]");
+        seasons = seasonsBody.response.map(Number).filter(Number.isFinite).sort((a, b) => b - a).slice(0, depth);
+    } else {
+        const mostRecentCompleted = identity.currentSeason - 1;
+        seasons = Array.from({ length: depth }, (_, index) => mostRecentCompleted - index);
+    }
+    const rows = [], providerFailures = [];
+    for (const season of seasons) {
+        try {
+            const body = await providerCached(seasonCache, `${profile.id}:${season}`, SEASON_TTL,
+                () => apiFootball(env, "/players", { id: profile.id, season }, metrics), metrics);
+            if (!Array.isArray(body.response)) throw new ProviderError("malformed", 502, "API-Football season response is missing response[]");
+            rows.push(...body.response.flatMap(record => (record.statistics || []).map(stat => normalizedSeason(stat, season)))
+                .filter(row => row.club && row.competition));
+        } catch (error) {
+            if (error.kind === "rate_limit") { providerFailures.push("history:rate_limit"); break; }
+            if (rows.length) { providerFailures.push(`history:${error.kind || "upstream"}`); break; }
+            throw error;
+        }
+    }
+    const partial = providerFailures.length > 0;
     return { provider: "api-football", providerPlayerId: profile.id, identity: {
         status: "matched", confidence: identity.confidence, signals: identity.match.reasons,
         providerName: profile.name, currentClubConfirmed: identity.match.reasons.includes("current_club")
     }, birthDate: profile.birth?.date || null, age: number(profile.age), nationality: profile.nationality || null,
-    positions: [...new Set(rows.map(row => row.position).filter(Boolean))], seasons: rows,
+    positions: [...new Set(rows.map(row => row.position).filter(Boolean))], seasons: rows, partial, providerFailures,
+    historyDepthRequested: depth, historySeasonsReturned: [...new Set(rows.map(row => row.season))], metrics,
     international: null, sources: [source("historical-statistics", ["identity", "career", "season-statistics", "advanced-statistics"])] };
 }
 
@@ -150,13 +266,21 @@ function recentItem(kind, date, summary, status = "reported", extra = {}) {
     return { kind, date: date || null, summary, status, ...extra };
 }
 
-export async function apiFootballRecent(player, env, now = Date.now()) {
-    const identity = await resolveApiFootballPlayer(player, env);
+export async function apiFootballRecent(player, env, now = Date.now(), options = { transfers: true, injuries: true }) {
+    const metrics = newMetrics();
+    const identity = await resolveApiFootballPlayer(player, env, metrics);
     const id = identity.match.providerId;
-    const [transfersBody, injuriesBody] = await Promise.all([
-        apiFootball(env, "/transfers", { player: id }),
-        apiFootball(env, "/injuries", { player: id, season: identity.currentSeason })
-    ]);
+    const fetchTransfers = Boolean(options.transfers), fetchInjuries = Boolean(options.injuries);
+    const providerFailures = [];
+    let transfersBody = { response: [] }, injuriesBody = { response: [] };
+    if (fetchTransfers) try {
+        transfersBody = await providerCached(transferCache, String(id), TRANSFER_TTL,
+            () => apiFootball(env, "/transfers", { player: id }, metrics), metrics);
+    } catch (error) { providerFailures.push(`transfers:${error.kind || "upstream"}`); }
+    if (fetchInjuries) try {
+        injuriesBody = await providerCached(injuryCache, `${id}:${identity.currentSeason}`, INJURY_TTL,
+            () => apiFootball(env, "/injuries", { player: id, season: identity.currentSeason }, metrics), metrics);
+    } catch (error) { providerFailures.push(`injuries:${error.kind || "upstream"}`); }
     if (!Array.isArray(transfersBody.response) || !Array.isArray(injuriesBody.response))
         throw new ProviderError("malformed", 502, "API-Football recent response is missing response[]");
     const cutoff = now - 365 * 24 * 60 * 60 * 1000;
@@ -170,7 +294,8 @@ export async function apiFootballRecent(player, env, now = Date.now()) {
             { team: item.team?.name || null }));
     const items = [...transfers, ...injuries].sort((a, b) => (dateValue(b.date) || 0) - (dateValue(a.date) || 0));
     return { provider: "api-football", asOf: new Date(now).toISOString(), items,
-        conflicts: detectConflicts(items), identity: { confidence: identity.confidence, signals: identity.match.reasons },
+        partial: providerFailures.length > 0, providerFailures, metrics,
+        conflicts: detectConflicts(items), identity: { providerPlayerId: id, confidence: identity.confidence, signals: identity.match.reasons },
         sources: [source("recent-structured-data", ["transfers", "injuries"], new Date(now).toISOString())] };
 }
 
@@ -230,19 +355,21 @@ async function customProvider(base, player, env, kind) {
     return checkedJson(url, headers, "Custom football adapter");
 }
 
-export async function fetchHistorical(player, env) {
+export async function fetchHistorical(player, env, options = {}) {
     const selection = providerSelection(env, "historical");
     if (!selection.configured) return null;
-    return selection.name === "custom" ? customProvider(selection.override, player, env, "history") : apiFootballHistory(player, env);
+    return selection.name === "custom" ? customProvider(selection.override, player, env, "history") : apiFootballHistory(player, env, options);
 }
 
-export async function fetchRecent(player, env, now = Date.now()) {
+export async function fetchRecent(player, env, now = Date.now(), options = { transfers: true, injuries: true }) {
     const selection = providerSelection(env, "recent");
     if (!selection.configured) return null;
     if (selection.name === "custom") return customProvider(selection.override, player, env, "recent");
-    const structured = await apiFootballRecent(player, env, now);
+    const structured = options.transfers || options.injuries ? await apiFootballRecent(player, env, now, options) :
+        { provider: "api-football", asOf: new Date(now).toISOString(), items: [], conflicts: [],
+            identity: null, partial: false, providerFailures: [], metrics: newMetrics(), sources: [] };
     let news = { items: [], sources: [] };
-    const providerFailures = [];
+    const providerFailures = [...(structured.providerFailures || [])];
     if (env.FOOTBALL_CONTEXT_API_KEY) try { news = await newsApiContext(player, env, now); }
     catch (error) { providerFailures.push(`news:${error.kind || "upstream"}`); }
     return { ...structured, items: [...structured.items, ...news.items], sources: [...structured.sources, ...news.sources],
